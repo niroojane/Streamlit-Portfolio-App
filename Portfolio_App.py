@@ -159,7 +159,7 @@ if uploaded_file:
         fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
         st.plotly_chart(fig)
 
-        st.subheader("Efficient Frontier")
+        st.title("Efficient Frontier")
         frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
         frontier = pd.DataFrame(
             {
