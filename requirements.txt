@@ -1,0 +1,11 @@
+binance_connector==3.10.0
+matplotlib==3.10.0
+numpy==2.2.1
+pandas==2.2.3
+plotly==5.24.1
+python_binance==1.0.25
+Requests==2.32.3
+scipy==1.15.1
+seaborn==0.13.2
+statsmodels==0.14.2
+streamlit==1.37.1
