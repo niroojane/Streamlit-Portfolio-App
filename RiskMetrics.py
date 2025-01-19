@@ -172,6 +172,39 @@ def kupiec_test(rolling_var,Q=5):
     return stats
 
 
+# In[ ]:
+
+
+def create_constraint(sign,limit,position):
+    
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
+
+    if sign=='≤' :
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: limit-weights[position]}]
+    elif sign=='≥' :
+    
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: weights[position]-limit}]
+    else:
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: weights[position]-limit}]
+
+    return constraints
+
+def diversification_constraint(sign,limit):
+    
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
+
+    if sign=='≤' :
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: limit-weights}]
+    elif sign=='≥' :
+    
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: weights-limit}]
+    else:
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: weights-limit}]
+
+    return constraints
+
+
+
 # ## Portfolio Construction
 
 # In[2]:

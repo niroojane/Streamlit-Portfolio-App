@@ -20,8 +20,8 @@ get_ipython().run_line_magic('run', '"Binance API.ipynb".ipynb')
 # In[3]:
 
 
-binance_api_key=''
-binance_api_secret=''
+binance_api_key='E90xR7UnO2oeP3lrgC50zkqUuAqyyXs4uSlAGcqIVO9n90ELrFI4gfVI2HGGxxCj'
+binance_api_secret='Inls2xYl9FqPi0zlIrucfxG81drx7w6Pv6SzYFxMNoAcwDjlCKug7zUM9zB3lF9h'
 Binance=BinanceAPI(binance_api_key,binance_api_secret)
 
 
