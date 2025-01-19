@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[5]:
 
 
 from binance.spot import Spot
+#from binance.client import Client
 import pandas as pd
 import requests
 import datetime
 
 
-# In[ ]:
+# In[3]:
 
 
 def daterange(start_date, end_date,interval=30):
@@ -198,18 +199,6 @@ class BinanceAPI:
             
                 
             return history
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
 
 
 # In[ ]:
