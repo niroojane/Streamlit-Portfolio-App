@@ -252,7 +252,7 @@ if uploaded_file:
         st.subheader("Correlation Matrix")
         
     
-        fig = px.imshow(returns.corr(),color_continuous_scale='blues',text_auto=True, aspect="auto")
+        fig = px.imshow(returns.corr().round(2),color_continuous_scale='blues',text_auto=True, aspect="auto")
         fig.update_traces(xgap=2, ygap=2)
         fig.update_traces(textfont=dict(family="Arial Narrow", size=12))
         
