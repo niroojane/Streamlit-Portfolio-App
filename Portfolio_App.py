@@ -207,10 +207,10 @@ if uploaded_file:
         
         st.subheader("Portfolio Value Evolution")
     
-    
+        
         fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
         st.plotly_chart(fig)
-
+        st.write(portfolio_returns)
 
     with tab2:
         
