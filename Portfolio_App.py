@@ -11,22 +11,46 @@ import datetime
 from RiskMetrics import Portfolio, RiskAnalysis,create_constraint,diversification_constraint
 from Rebalancing import rebalanced_portfolio, buy_and_hold
 
-
 st.title("Portfolio Optimization App")
 
+# File Upload
 uploaded_file = st.file_uploader("Upload an Excel file with Price data", type="xlsx")
 
 if uploaded_file:
+    # Create tabs for Portfolio Analysis and Efficient Frontier
+        # Load and prepare the data
+    prices_original = pd.read_excel(uploaded_file, index_col=0)
+    
+    # Convert the index to datetime and clean the data
+    prices_original.index = pd.to_datetime(prices_original.index)
+    
+    max_value = prices_original.index.max().strftime('%Y-%m-%d')
+    min_value = prices_original.index.min().strftime('%Y-%m-%d')
+    max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+    min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+    value=(min_value,max_value)
+    
+    Model = st.slider(
+        'Date:',
+        min_value=min_value,
+        max_value=max_value,
+        value=value)
+
+    selmin, selmax = Model
+    selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+    selmaxd = selmax.strftime('%Y-%m-%d')
+    
+    # Filter data by selected date range
+    mask = (prices_original.index >= selmind) & (prices_original.index <= selmaxd)
+    prices=prices_original.loc[mask]
+    returns = prices.pct_change().dropna()
+    
     tab1, tab2 = st.tabs(["Portfolio Analysis", "Efficient Frontier"])
 
     with tab1:
         st.title("Asset View")
-            
-        pd.options.display.float_format = '{:.2%}'.format
-    
-        prices = pd.read_excel(uploaded_file, index_col=0)
-        returns = prices.pct_change().dropna() 
-    
+
+        # Load Excel file and ensure datetime index
         
         st.subheader("Asset Returns")
     
