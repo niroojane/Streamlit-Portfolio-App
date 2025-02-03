@@ -14,41 +14,41 @@ from Rebalancing import rebalanced_portfolio, buy_and_hold
 st.title("Portfolio Optimization App")
 
 # File Upload
-uploaded_file = st.file_uploader("Upload an Excel file with Price data", type="xlsx")
+uploaded_file = st.file_uploader("Upload an Excel file with time series", type="xlsx")
 
 if uploaded_file:
     # Create tabs for Portfolio Analysis and Efficient Frontier
         # Load and prepare the data
     prices_original = pd.read_excel(uploaded_file, index_col=0)
-    
-    # Convert the index to datetime and clean the data
-    prices_original.index = pd.to_datetime(prices_original.index)
-    
-    max_value = prices_original.index.max().strftime('%Y-%m-%d')
-    min_value = prices_original.index.min().strftime('%Y-%m-%d')
-    max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
-    min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
-    value=(min_value,max_value)
-    
-    Model = st.slider(
-        'Date:',
-        min_value=min_value,
-        max_value=max_value,
-        value=value)
 
-    selmin, selmax = Model
-    selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
-    selmaxd = selmax.strftime('%Y-%m-%d')
-    
-    # Filter data by selected date range
-    mask = (prices_original.index >= selmind) & (prices_original.index <= selmaxd)
-    prices=prices_original.loc[mask]
-    returns = prices.pct_change().dropna()
     
     tab1, tab2 = st.tabs(["Portfolio Analysis", "Efficient Frontier"])
 
+
     with tab1:
         st.title("Asset View")
+        prices_original.index = pd.to_datetime(prices_original.index)
+    
+        max_value = prices_original.index.max().strftime('%Y-%m-%d')
+        min_value = prices_original.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+        value=(min_value,max_value)
+        
+        Model = st.slider(
+            'Date:',
+            min_value=min_value,
+            max_value=max_value,
+            value=value)
+    
+        selmin, selmax = Model
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        
+        # Filter data by selected date range
+        mask = (prices_original.index >= selmind) & (prices_original.index <= selmaxd)
+        prices=prices_original.loc[mask]
+        returns = prices.pct_change().dropna()
 
         # Load Excel file and ensure datetime index
         
@@ -84,8 +84,6 @@ if uploaded_file:
         st.title("Portfolio Construction")
         
         portfolio = RiskAnalysis(returns)
-
-        
     
         st.subheader("Constraints")  
                 
@@ -138,39 +136,59 @@ if uploaded_file:
 
         optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
 
-        st.subheader("Portfolio Weights")
+
+        st.subheader("Optimized Weights")
+
         allocation={}
-        
+
         optimized_weights = portfolio.optimize(objective="sharpe_ratio")
+        
         allocation['Optimal Portfolio']=optimized_weights.tolist()
         allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
-    
-        allocation=pd.DataFrame(allocation,index=returns.columns).T
         
-        editable_weights = st.data_editor(allocation, num_rows="dynamic")
+        allocation_dataframe=pd.DataFrame(allocation,index=returns.columns).T
+        
+        
+        allocation_dataframe = st.data_editor(allocation_dataframe, num_rows="dynamic")
     
+
+        st.subheader("Allocation")
+
+        initial_allocation={}
+        initial_allocation['Allocation']=[0.0]*9
+        
+        initial_allocation=pd.DataFrame(initial_allocation,index=prices_original.columns).T
+        initial_allocation = st.data_editor(initial_allocation, num_rows="dynamic")
         
         allocation_dict={}
     
-        for idx in editable_weights.index:
-            allocation_dict[idx]=editable_weights.loc[idx].to_numpy()
+        for idx in allocation_dataframe.index:
+            allocation_dict[idx]=allocation_dataframe.loc[idx].to_numpy()
+
+        for idx in initial_allocation.index:
+            allocation_dict[idx]=initial_allocation.loc[idx].to_numpy()
+
     
         metrics={}
-        metrics['Returns']={}
-        metrics['Volatility']={}
+        metrics['Expected Returns']={}
+        metrics['Expected Volatility']={}
+        metrics['Sharpe Ratio']={}
     
         for key in allocation_dict:
     
-            metrics['Returns'][key]=(np.round(portfolio.performance(allocation_dict[key]), 4))
-            metrics['Volatility'][key]=(np.round(portfolio.variance(allocation_dict[key]), 4))
-        
+            metrics['Expected Returns'][key]=(np.round(portfolio.performance(allocation_dict[key]), 4))
+            metrics['Expected Volatility'][key]=(np.round(portfolio.variance(allocation_dict[key]), 4))
+            sharpe_ratio=np.round(portfolio.performance(allocation_dict[key])/portfolio.variance(allocation_dict[key]),2)
+            metrics['Sharpe Ratio'][key]=sharpe_ratio
         
         indicators = pd.DataFrame(metrics,index=allocation_dict.keys())
         
         st.subheader("Portfolio Metrics")
+        
         st.dataframe(indicators.T)
-        
-        
+   
+    # Convert the index to datetime and clean the data
+
         with st.sidebar:
             st.header("⚙️ Settings")
             
@@ -194,12 +212,12 @@ if uploaded_file:
         perfs.columns=['Returns since '+ pd.to_datetime(portfolio_returns.index[0], format='%Y-%d-%m').strftime("%Y-%m-%d"),
                   'Returns since '+datetime.datetime(max(portfolio_returns.index.year), 1, 1).strftime("%Y-%m-%d"),
                   'Annualized Returns']
-        
-        st.subheader("Portfolio Returns")
+
+        st.subheader("Performance")
     
         st.dataframe(perfs.T)
         
-        st.subheader("Portfolio Risk")
+        st.subheader("Risk")
     
         tracking_error_daily={}
         tracking_error_monthly={}
@@ -236,10 +254,114 @@ if uploaded_file:
         st.plotly_chart(fig)
         st.write(portfolio_returns)
 
+
     with tab2:
         
         st.title("Efficient Frontier")
+
+        max_value = prices_original.index.max().strftime('%Y-%m-%d')
+        min_value = prices_original.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+        value=(min_value,max_value)
+        
+        Model = st.slider(
+            'Date Efficient Frontier:',
+            min_value=min_value,
+            max_value=max_value,
+            value=value)
     
+        selmin, selmax = Model
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        
+        # Filter data by selected date range
+        mask = (prices_original.index >= selmind) & (prices_original.index <= selmaxd)
+        prices=prices_original.loc[mask]
+        returns=prices.pct_change()
+        
+        portfolio = RiskAnalysis(returns)
+        
+        data = pd.DataFrame({'Assets':[None],
+        'Sign':[None],
+        'Limit':[None]
+        })
+        
+        drop_down_list=list(prices.columns)+['All']
+        # Define dropdown options for the 'Risk Level' column
+        column_config = {'Assets':st.column_config.SelectboxColumn(
+            options=drop_down_list),
+        'Sign': st.column_config.SelectboxColumn(
+            options=["=", "≥", "≤"],  # Dropdown options
+            help="Select the risk level for each asset."  # Tooltip for the column
+        )
+        }
+
+        editable_data = st.data_editor(
+        data,
+        column_config=column_config,
+        num_rows="dynamic",  # Allow rows to be added dynamically
+        )
+    
+        constraint_matrix=editable_data.to_numpy()
+        constraints=[]
+
+        try:
+            for row in range(constraint_matrix.shape[0]):
+                temp = constraint_matrix[row, :]
+                ticker = temp[0]
+                
+                if ticker not in drop_down_list:
+                    continue
+                    
+                sign = temp[1]
+                limit = float(temp[2])
+
+                if ticker=='All':
+                    constraint= diversification_constraint(sign,limit)
+                else:
+                    position = np.where(prices.columns == ticker)[0][0]
+                    constraint = create_constraint(sign, limit, position)
+                    
+                constraints.extend(constraint)
+                
+        
+        except Exception as e:
+            pass
+
+        optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
+        optimized_weights = portfolio.optimize(objective="sharpe_ratio")
+
+        optimal_results={}
+
+        optimal_results['Current Optimal Portfolio']=optimized_weights.tolist()
+        optimal_results['Current Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
+    
+        for idx in allocation_dataframe.index:
+            optimal_results[idx]=allocation_dict[idx].tolist()
+
+        for idx in initial_allocation.index:
+            optimal_results[idx]=allocation_dict[idx].tolist()
+
+
+        optimal_results=pd.DataFrame(optimal_results,index=prices.columns).T
+        editable_weights = st.data_editor(optimal_results, num_rows="dynamic")
+
+        weight_matrix={}
+        
+        for idx in optimal_results.index:
+            weight_matrix[idx]=editable_weights.loc[idx].to_numpy()
+
+        metrics={}
+        metrics['Returns']={}
+        metrics['Volatility']={}
+        metrics['Sharpe Ratio']={}
+
+        for key in weight_matrix:
+    
+            metrics['Returns'][key]=(np.round(portfolio.performance(weight_matrix[key]), 4))
+            metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
+            metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
         
         frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
         frontier = pd.DataFrame(
@@ -259,7 +381,7 @@ if uploaded_file:
         )
 
         
-        for key in allocation_dict:
+        for key in weight_matrix:
             
             fig.add_scatter(
                 x=[metrics["Volatility"][key]],
@@ -272,7 +394,11 @@ if uploaded_file:
         fig.update_layout(showlegend=False)
         fig.update_layout(hoverlabel_namelength=-1)
         st.plotly_chart(fig)
-        
+
+        indicators = pd.DataFrame(metrics,index=weight_matrix.keys())
+
+        st.dataframe(indicators.T)
+
         st.subheader("Correlation Matrix")
         
     
