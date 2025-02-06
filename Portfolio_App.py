@@ -155,7 +155,7 @@ if uploaded_file:
         st.subheader("Allocation")
 
         initial_allocation={}
-        initial_allocation['Allocation']=[0.0]*9
+        initial_allocation['Allocation']=[0.0]*prices_original.shape[1]
         
         initial_allocation=pd.DataFrame(initial_allocation,index=prices_original.columns).T
         initial_allocation = st.data_editor(initial_allocation, num_rows="dynamic")
