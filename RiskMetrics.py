@@ -204,7 +204,6 @@ def diversification_constraint(sign,limit):
     return constraints
 
 
-
 # ## Portfolio Construction
 
 # In[2]:
