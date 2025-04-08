@@ -269,9 +269,9 @@ def get_portfolio_risk():
     
     return risk.T.reset_index().rename(columns={'index': 'Indicators'}).round(4)
 
-def get_portfolio_evolution():
+def get_portfolio_evolution(frequency):
     
-    rebalanced_time_series()
+    rebalanced_time_series(frequency=frequency)
     fig = px.line(portfolio_returns, title="Portfolio Value Evolution",color_discrete_sequence = px.colors.sequential.Sunsetdark)
     fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
     fig.update_traces(textfont=dict(family="Arial Narrow"))
@@ -542,9 +542,10 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             # Trigger by button click
 
             dropdown = gr.Dropdown(choices=[], label="Select Benchmark")
+            
 
             add_button.click(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
-    
+            
             # Trigger by Enter key while typing in textbox
             new_allocation_input.submit(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
             
@@ -559,16 +560,24 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
                 return f"You selected: {benchmark}"
             
             dropdown.change(fn=show_selection, inputs=dropdown, outputs=output)
-            
-
-        gr.Markdown("# Portfolio Metrics")
 
         
-        get_portfolio_evolution_graph=gr.Interface(fn=get_portfolio_evolution,
-                                          inputs=None,
-                                          outputs=[gr.DataFrame(label="Portfolio Expected Metrics"),gr.DataFrame(label="Portfolio Returns")
-                                                   ,gr.DataFrame(label="Portfolio Risk")
-                                                   ,gr.Plot(label='Portfolio Time Series'),gr.DataFrame(label='Portfolio Time Series')])
+
+            gr.Markdown("# Portfolio Metrics")
+            
+            rebalancing_frequency = gr.Dropdown(choices=['Monthly','Quarterly','Yearly'], label="Select Rebalancing Frequency",value='Quarterly')
+
+            get_metrics_button = gr.Button("Get Portfolio Metrics")
+            metrics_table = gr.DataFrame(label="Portfolio Expected Metrics")
+            returns_table = gr.DataFrame(label="Portfolio Returns")
+            risk_table = gr.DataFrame(label="Portfolio Risk")
+            time_series_plot = gr.Plot(label="Portfolio Evolution")
+            time_series_data = gr.DataFrame(label="Portfolio Time Series")
+    
+            get_metrics_button.click(
+                fn=get_portfolio_evolution,
+                inputs=[rebalancing_frequency],
+                outputs=[metrics_table, returns_table, risk_table, time_series_plot, time_series_data])
 
     with gr.Tab("Efficient Frontier"):
         with gr.Column():
