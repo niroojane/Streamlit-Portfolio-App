@@ -12,13 +12,11 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
-# Example empty DataFrame for initialization
 allocation_df = pd.DataFrame()
 constraint_data=[]
 constraints=[]
 constraint_table=pd.DataFrame()
 
-# Function to load the Excel file
 def load_excel(file):
     global allocation_df,prices,returns,portfolio
 
@@ -409,49 +407,6 @@ def efficient_frontier_fig():
     )
         
 
-    # norm = mcolors.Normalize(vmin=frontier["Sharpe Ratio"].min(), vmax=frontier["Sharpe Ratio"].max())
-    # cmap = cm.get_cmap("Blues")
-
-    # # Create figure and axis
-    # fig, ax = plt.subplots(figsize=(10, 6))
-    # fig.patch.set_facecolor("black")
-    # ax.set_facecolor("black")
-
-    # # Scatter plot for the efficient frontier
-    # scatter = ax.scatter(
-    #     frontier["Volatility"],
-    #     frontier["Returns"],
-    #     c=frontier["Sharpe Ratio"],
-    #     cmap=cmap,
-    #     norm=norm,
-    #     s=30,
-    #     edgecolor='black'
-    # )
-
-    # # Add custom portfolio points + labels
-    # for key in weight_matrix:
-    #     x = metrics["Volatility"][key]
-    #     y = metrics["Returns"][key]
-    #     ax.scatter(x, y, color="orange", s=80, marker="x")
-    #     ax.text(x + 0.01, y, key, fontsize=11, color="orange", fontname="Arial Narrow")  # label offset a bit to the right
-
-    # # Add Optimal Portfolio + label
-    # x_opt = metrics["Volatility"]["Optimal Portfolio"]
-    # y_opt = metrics["Returns"]["Optimal Portfolio"]
-    # ax.scatter(x_opt, y_opt, color="red", s=80, marker="x")
-    # ax.text(x_opt + 0.01, y_opt, "Optimal Portfolio", fontsize=11, color="red", fontname="Arial Narrow")
-
-    # # Labels and grid
-    # ax.set_xlabel("Volatility", fontsize=13, color="white", fontname="Arial Narrow")
-    # ax.set_ylabel("Returns", fontsize=13, color="white", fontname="Arial Narrow")
-    # ax.tick_params(colors="white", labelsize=11)
-    # ax.grid(True, alpha=0.2)
-
-    # # Colorbar for Sharpe Ratio
-    # cbar = fig.colorbar(scatter, ax=ax)
-    # cbar.set_label("Sharpe Ratio", color="white", fontsize=12)
-    # cbar.ax.yaxis.set_tick_params(color='white')
-    # plt.setp(plt.getp(cbar.ax.axes, 'yticklabels'), color='white')
 
     return fig
 
@@ -465,31 +420,6 @@ def plot_corr_heatmap():
     fig.update_traces(xgap=2, ygap=2)
     fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
 
-    # corr = returns.corr().round(2)
-
-    # Set up the matplotlib figure
-    # fig, ax = plt.subplots(figsize=(10, 8))
-    # fig.patch.set_facecolor('black')  # Background outside plot
-    # ax.set_facecolor('black')         # Background inside plot
-
-    # # Create heatmap with annotations
-    # sns.heatmap(
-    #     corr,
-    #     annot=True,
-    #     fmt=".2f",
-    #     cmap="Blues",
-    #     linewidths=2,
-    #     linecolor="black",
-    #     cbar=True,
-    #     annot_kws={"fontsize": 15, "fontname": "Arial Narrow", "color": "white"},
-    #     ax=ax
-    # )
-
-    # # Style the labels and ticks
-    # ax.tick_params(colors='white')  # Tick color
-    # plt.xticks(rotation=45, ha="right", fontsize=12, fontname="Arial Narrow", color='white')
-    # plt.yticks(fontsize=12, fontname="Arial Narrow", color='white')
-    
     return fig
 
 def get_frontier_metrics():
@@ -539,14 +469,12 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             clear_allocation_button.click(fn=clear_allocation, inputs=[], outputs=[gr.Textbox()])
 
             
-            # Trigger by button click
 
             dropdown = gr.Dropdown(choices=[], label="Select Benchmark")
             
 
             add_button.click(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
             
-            # Trigger by Enter key while typing in textbox
             new_allocation_input.submit(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
             
             output = gr.Textbox(visible=False)
