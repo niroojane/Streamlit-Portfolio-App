@@ -15,10 +15,13 @@ import matplotlib.colors as mcolors
 allocation_df = pd.DataFrame()
 constraint_data=[]
 constraints=[]
-constraint_table=pd.DataFrame()
+constraint_table=pd.DataFrame(columns=["Asset", "Sign", "Limit"])
+
+drop_down_list = []
+constraints_options = []
 
 def load_excel(file):
-    global allocation_df,prices,returns,portfolio
+    global allocation_df,prices,returns,portfolio,drop_down_list
 
     try:
         prices = pd.read_excel(file.name, index_col=0, parse_dates=True)
@@ -35,8 +38,10 @@ def load_excel(file):
             {"Asset": returns.columns, "Optimal Portfolio": optimized_weights}
         ).set_index("Asset").T 
         
+        drop_down_list = list(prices.columns) + [None]
+        constraints_options = ["=", "≥", "≤"]
         
-        return "File uploaded successfully!"
+        return "File uploaded successfully!",gr.update(choices=drop_down_list)
 
 
     except Exception as e:
@@ -71,23 +76,27 @@ def add_allocation(new_allocation):
     except Exception as e:
         return allocation_df.reset_index().rename(columns={'index': 'Allocation'}).round(4), gr.update(choices=benchmarks, value=None)
 
-def create_constraint_table(constraint):
-    
-    global constraints,constraint_table
-    
-    new = [x for x in constraint.split(',')]
-    constraint_data.append(new)
-    constraint_table = pd.DataFrame(constraint_data,columns=['Asset','Sign','Limit'])
-    constraint_matrix =constraint_table.to_numpy()
+def submit(value1, value2, value3):
+    global constraint_table, constraints
+
+    new_row = {"Asset": value1, "Sign": value2, "Limit": value3}
+    constraint_table = pd.concat([constraint_table, pd.DataFrame([new_row])], ignore_index=True)
+
+    constraint_matrix = pd.DataFrame(constraint_table).to_numpy()
+    constraints = []
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
 
     try:
         for row in range(constraint_matrix.shape[0]):
             temp = constraint_matrix[row, :]
             ticker = temp[0]
+
+            if ticker not in drop_down_list:
+                continue
+
             sign = temp[1]
             limit = float(temp[2])
-            
-        
+
             if ticker == 'All': 
                 constraint = diversification_constraint(sign, limit)
             elif ticker not in prices.columns:
@@ -97,25 +106,19 @@ def create_constraint_table(constraint):
                 constraint = create_constraint(sign, limit, position)
         
             constraints.extend(constraint)
-        
-                
-            optimzed_weights_constraints=portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
-        
+
     except Exception as e:
-        print(f"Error creating constraint table: {str(e)}")
-        constraint_table = pd.DataFrame()
-    
+        pass
+
     return constraint_table
         
-def clear_constraint_matrix():
-    global constraints, constraint_table, constraint_data
-
-    constraints = []
-    constraint_table = pd.DataFrame()
-    constraint_data = []
+def reset_constraints():
     
-    return "Constraint matrix cleared"
-
+    global constraint_table, constraints
+    constraint_table=pd.DataFrame(columns=["Asset", "Sign", "Limit"])
+    constraints = []
+    return constraint_table
+    
 def clear_allocation():
     
     global allocation_df
@@ -437,8 +440,8 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
         gr.Markdown("# Upload Data")  
         file_upload = gr.File(label="Upload Excel File")
         upload_status = gr.Textbox(label="Upload Status")
-        file_upload.upload(fn=load_excel, inputs=file_upload, outputs=[upload_status])
-
+        
+        
         gr.Markdown("# Asset Metrics")
         
         asset_metrics_view = gr.Interface(fn=asset_metrics,
@@ -447,23 +450,38 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
                     )
         
 
+        
         gr.Markdown("# Portfolio Allocation")
 
         
         with gr.Column():
             
-            constraint_table_view = gr.Dataframe(label="Constraint Matrix", interactive=True)
-            new_constraint_input = gr.Textbox(label="Enter Constraint (comma separated with signs : [≤,≥,=])")
-            add_button_constraint = gr.Button("Add Constraint")
+            constraints_table = gr.Dataframe(headers=["Asset", "Sign", "Limit"], interactive=False)
             
-            clear_constraint = gr.Button("Reset Constraint")
-            clear_constraint.click(fn=clear_constraint_matrix, inputs=[], outputs=[gr.Textbox()])
+            asset_dropdown = gr.Dropdown(choices=drop_down_list, label="Asset or Sector")
+            sign_dropdown = gr.Dropdown(choices=["=", "≥", "≤"], label="Sign")
+            limit_input = gr.Number(label="Limit (Float)")
+            
+            file_upload.change(load_excel, inputs=file_upload, outputs=[upload_status, asset_dropdown])
+            submit_button = gr.Button("Add Constraint")
+            reset_button = gr.Button("Reset Constraints")
+            
+
+            submit_button.click(
+                submit,
+                inputs=[asset_dropdown, sign_dropdown, limit_input],
+                outputs=[constraints_table]
+            )
+            
+            reset_button.click(
+                reset_constraints,
+                outputs=[constraints_table]
+            )
             
             allocation_table_view = gr.Dataframe(label="Portfolio Allocation", interactive=True)
             new_allocation_input = gr.Textbox(label="Enter Allocation (comma separated)")
-
+        
             add_button = gr.Button("Add Allocation Row")
-            add_button_constraint.click(fn=create_constraint_table, inputs=new_constraint_input, outputs=[constraint_table_view])
             
             clear_allocation_button = gr.Button("Reset Allocation")
             clear_allocation_button.click(fn=clear_allocation, inputs=[], outputs=[gr.Textbox()])
