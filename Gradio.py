@@ -132,7 +132,7 @@ def clear_allocation():
     ).set_index("Asset").T 
     
     
-    return "Allocation matrix cleared"
+    return allocation_df.reset_index().rename(columns={'index': 'Allocation'}).round(4)
     
 def load_choices():
     return benchmarks
@@ -458,9 +458,9 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             
             constraints_table = gr.Dataframe(headers=["Asset", "Sign", "Limit"], interactive=False)
             
-            asset_dropdown = gr.Dropdown(choices=drop_down_list, label="Asset or Sector")
+            asset_dropdown = gr.Dropdown(choices=drop_down_list, label="Asset")
             sign_dropdown = gr.Dropdown(choices=["=", "≥", "≤"], label="Sign")
-            limit_input = gr.Number(label="Limit (Float)")
+            limit_input = gr.Number(label="Limit")
             
             file_upload.change(load_excel, inputs=file_upload, outputs=[upload_status, asset_dropdown])
             submit_button = gr.Button("Add Constraint")
@@ -484,10 +484,9 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             add_button = gr.Button("Add Allocation Row")
             
             clear_allocation_button = gr.Button("Reset Allocation")
-            clear_allocation_button.click(fn=clear_allocation, inputs=[], outputs=[gr.Textbox()])
+            clear_allocation_button.click(fn=clear_allocation, inputs=[], outputs=[allocation_table_view])
 
             
-
             dropdown = gr.Dropdown(choices=[], label="Select Benchmark")
             
 
