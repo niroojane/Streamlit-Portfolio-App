@@ -38,7 +38,7 @@ def load_excel(file):
             {"Asset": returns.columns, "Optimal Portfolio": optimized_weights}
         ).set_index("Asset").T 
         
-        drop_down_list = list(prices.columns) + [None]
+        drop_down_list = list(prices.columns) + ['All']+[None]
         constraints_options = ["=", "≥", "≤"]
         
         return "File uploaded successfully!",gr.update(choices=drop_down_list)
