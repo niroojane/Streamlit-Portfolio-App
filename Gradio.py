@@ -2,15 +2,14 @@ import gradio as gr
 from datetime import datetime
 import pandas as pd
 import numpy as np
+import os
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy.stats import norm, chi2,gumbel_l
 from RiskMetrics import RiskAnalysis,diversification_constraint, create_constraint
 from Rebalancing import rebalanced_portfolio , buy_and_hold
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
+
 
 allocation_df = pd.DataFrame()
 constraint_data=[]
@@ -163,16 +162,22 @@ def get_asset_returns():
 def get_asset_risk():
 
     dates_drawdown=((prices-prices.cummax())/prices.cummax()).idxmin().dt.date
-    monthly_vol=prices.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
+    
+    vol=prices.pct_change().iloc[-260:].std()*np.sqrt(260)
+    weekly_vol=prices.resample('W').last().iloc[-153:].pct_change().std()*np.sqrt(52)
+    monthly_vol_1Y=prices.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
+    monthly_vol_5Y=prices.resample('ME').last().iloc[-181:].pct_change().std()*np.sqrt(12)
 
     drawdown=pd.DataFrame((((prices-prices.cummax()))/prices.cummax()).min())
     Q=0.05
     intervals=np.arange(Q, 1, 0.0005, dtype=float)
-    cvar=monthly_vol*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
-    vol=prices.pct_change().iloc[-360:].std()*np.sqrt(260)
+    cvar=monthly_vol_5Y*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
 
-    risk=pd.concat([vol,monthly_vol,cvar,drawdown,dates_drawdown],axis=1).round(4)
-    risk.columns=['Annualized Volatility (daily)','Annualized Volatility (Monthly)','CVar Parametric '+str(int((1-Q)*100))+'%','Max Drawdown','Date of Max Drawdown']
+    risk=pd.concat([vol,weekly_vol,monthly_vol_1Y,monthly_vol_5Y,cvar,drawdown,dates_drawdown],axis=1).round(4)
+    risk.columns=['Annualized Volatility (daily)',
+    'Annualized Volatility 3Y (Weekly)',
+    'Annualized Volatility 5Y (Monthly)','Annualized Volatility since 2020 (Monthly)',
+    'CVar Parametric '+str(int((1-Q)*100))+'%','Max Drawdown','Date of Max Drawdown']
     
     return risk.T.reset_index().rename(columns={'index': 'Risks'}).round(4)
 
@@ -241,7 +246,7 @@ def get_portfolio_risk():
 
     tracking_error_daily={}
     tracking_error_monthly={}
-    monthly_returns=prices.resample('ME').last().pct_change()
+    monthly_returns=prices.resample('ME').last().iloc[-180:].pct_change()
 
 
     for key in allocation_dict:
@@ -254,13 +259,14 @@ def get_portfolio_risk():
     tracking_error_monthly=pd.DataFrame(tracking_error_monthly.values(),index=tracking_error_monthly.keys(),columns=['Tracking Error (Monthly)'])
 
     dates_drawdown=((portfolio_returns-portfolio_returns.cummax())/portfolio_returns.cummax()).idxmin().dt.date
-    monthly_vol=portfolio_returns.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
+    
+    vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
+    monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
 
     drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
     Q=0.05
     intervals=np.arange(Q, 1, 0.0005, dtype=float)
     cvar=monthly_vol*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
-    vol=portfolio_returns.pct_change().iloc[-360:].std()*np.sqrt(260)
 
     risk=pd.concat([vol,tracking_error_daily,monthly_vol,tracking_error_monthly,cvar,drawdown,dates_drawdown],axis=1).round(4)
     risk.columns=['Annualized Volatility (daily)','TEV (daily)',
@@ -273,11 +279,17 @@ def get_portfolio_risk():
 def get_portfolio_evolution(frequency):
     
     rebalanced_time_series(frequency=frequency)
-    fig = px.line(portfolio_returns, title="Portfolio Value Evolution",color_discrete_sequence = px.colors.sequential.Sunsetdark)
+    ptf_drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()))
+
+    fig = px.line(portfolio_returns, title="Portfolio Value Evolution",color_discrete_sequence = px.colors.sequential.Sunsetdark,render_mode='svg')
     fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
     fig.update_traces(textfont=dict(family="Arial Narrow"))
 
-    return get_expected_metrics(),rebalanced_metrics(),get_portfolio_risk(),fig,portfolio_returns.reset_index().rename(columns={'index': 'Portfolio Returns'}).round(4)
+    fig2=px.line(ptf_drawdown, title="Portfolio Drawdown",color_discrete_sequence = px.colors.sequential.Sunsetdark,render_mode='svg')
+    fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
+    fig2.update_traces(textfont=dict(family="Arial Narrow"))
+
+    return get_expected_metrics(),rebalanced_metrics(),get_portfolio_risk(),fig,fig2,portfolio_returns.reset_index().rename(columns={'index': 'Portfolio Returns'}).round(4)
 
 
 
@@ -297,6 +309,7 @@ def current_allocation():
 
     optimal_results_dataframe=pd.DataFrame(optimal_results,index=prices.columns).T
 
+    return optimal_results_dataframe.reset_index().rename(columns={'index': 'Allocation'}).round(4)
 
 def add_allocation_optimized(new_allocation):
 
@@ -413,6 +426,12 @@ def efficient_frontier_fig():
 
     return fig
 
+def download_excel(name):
+
+    portfolio_returns.to_excel(name+'.xlsx',index=False)
+
+    return "Time Series Downloaded"
+
 def plot_corr_heatmap():
     
     if returns is None:
@@ -517,12 +536,20 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             returns_table = gr.DataFrame(label="Portfolio Returns")
             risk_table = gr.DataFrame(label="Portfolio Risk")
             time_series_plot = gr.Plot(label="Portfolio Evolution")
+            Drawdown_plot = gr.Plot(label="Portfolio Drawdown")
             time_series_data = gr.DataFrame(label="Portfolio Time Series")
     
             get_metrics_button.click(
                 fn=get_portfolio_evolution,
                 inputs=[rebalancing_frequency],
-                outputs=[metrics_table, returns_table, risk_table, time_series_plot, time_series_data])
+                outputs=[metrics_table, returns_table, risk_table, time_series_plot,Drawdown_plot, time_series_data])
+
+
+            file_name=gr.Textbox(label="File Name")
+            download_btn=gr.Button("Download Time Series")
+            file_output=gr.Textbox(label="Download Status")
+
+            download_btn.click(fn=download_excel,inputs=file_name,outputs=file_output)
 
     with gr.Tab("Efficient Frontier"):
         with gr.Column():
@@ -536,7 +563,7 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             new_allocation_input_current = gr.Textbox(label="Enter Allocation (comma separated)")
             
             init_opt_btn = gr.Button("Get Previous Allocation")
-            init_opt_btn.click(fn=current_allocation, inputs=[], outputs=[])
+            init_opt_btn.click(fn=current_allocation, inputs=[], outputs=[allocation_table_current])
 
             add_button_optimized = gr.Button("Add New Allocation")
             add_button_optimized.click(fn=add_allocation_optimized, inputs=new_allocation_input_current, outputs=[allocation_table_current])
@@ -554,5 +581,4 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             get_corr_matrix=gr.Interface(fn=plot_corr_heatmap,inputs=None,outputs=gr.Plot(label='Correlation Matrix'))
          
 
-    
-app.launch()
+    app.launch()
