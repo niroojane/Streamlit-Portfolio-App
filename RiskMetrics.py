@@ -615,7 +615,7 @@ class RiskAnalysis(Portfolio):
         pnl_dataframe=self.perf_contrib(weights,amount)
         pnl_dataframe_pct=pnl_dataframe/pnl_dataframe.sum()
         
-        return pnl_dataframe
+        return pnl_dataframe_pct
     
     def summary(self,weights):
         
