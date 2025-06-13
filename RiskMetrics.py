@@ -597,32 +597,25 @@ class RiskAnalysis(Portfolio):
     
         return var_contrib
     
-    def perf_contrib(self,start_weights):
-    
-        ptf_evolution=((1+self.returns).cumprod()*start_weights)
-        initial_weights=self.inventory(start_weights)
-        
-        last_nav=ptf_evolution.iloc[-1].sum()
-        last_row=ptf_evolution.iloc[-1]
-        last_weight=last_row/last_nav
+    def perf_contrib(self,weights,amount=100):
 
-        perf=last_row/start_weights
-        perf_contrib=(perf-1)*start_weights
+        fictive_prices=(1+self.returns).cumprod()
+        fictive_prices.iloc[0]=1
+        shares=amount*weights/fictive_prices.iloc[0]
+        fictive_portfolio=shares*fictive_prices
+        book_cost=fictive_portfolio.iloc[0]
+        last_value=fictive_portfolio.iloc[-1]
+        pnl=last_value-book_cost
+        pnl_dataframe=pd.DataFrame(pnl.sort_values(ascending=False),columns=['Performance Contribution'])
+        pnl_dataframe=pnl_dataframe.loc[(pnl_dataframe!=0).any(axis=1)]
+        return pnl_dataframe
 
-        perf_report=pd.concat([perf_contrib,initial_weights,last_weight],axis=1)
-        perf_report.columns=['Performance Contribution','Initial Weights','Last Weights']
+    def perf_contrib_pct(self,weights,amount=100):
 
-        return perf_report.dropna()
-    
-    def perf_contrib_pct(self,weights):
+        pnl_dataframe=self.perf_contrib(weights,amount)
+        pnl_dataframe_pct=pnl_dataframe/pnl_dataframe.sum()
         
-        perf_contrib=self.perf_contrib(weights)
-        perf_contrib['Performance Contribution']=perf_contrib['Performance Contribution']/perf_contrib['Performance Contribution'].sum()
-        perf_contrib.columns=['Performance Contribution in %','Initial Weights','Last Weights']
-        
-        perf_report=perf_contrib.sort_values(by='Performance Contribution in %',ascending=False)
-        
-        return perf_contrib
+        return pnl_dataframe*100
     
     def summary(self,weights):
         
