@@ -11,21 +11,21 @@ import numpy as np
 # In[2]:
 
 
-def rebalanced_portfolio(data,weights,investment_amount=100,frequency='Quarterly'):
+def rebalanced_portfolio(data,weights,investment_amount=100,frequency='quarterly'):
 
     perf=data.pct_change()
 
     prices_dict=data.T.to_dict()
     #perf_dict=perf.T.to_dict()
 
-    if frequency=='Quarterly':
+    if frequency=='quarterly':
         month=list(sorted(set(data.index + pd.offsets.BQuarterEnd(0))))
     
-    elif frequency=='Monthly':
+    elif frequency=='monthly':
 
         month=list(sorted(set(data.index + pd.offsets.BMonthEnd(0))))
 
-    elif frequency=='Yearly':
+    elif frequency=='year_end':
         month=list(sorted(set(data.index + pd.offsets.BYearEnd(0))))
         
     
@@ -58,7 +58,7 @@ def rebalanced_portfolio(data,weights,investment_amount=100,frequency='Quarterly
     for j in range(len(dates)-1):
     
     
-        if dates[j+1]>closest_dates[i]:
+        if dates[j+1]>rebalancing_dates[i]:
             
             shares={}
             
@@ -95,3 +95,18 @@ def buy_and_hold(data,weights,investment_amount=100):
     
     return data*shares
 
+def compute_buy_and_hold_pnl(data,weights,investment_amount=100):
+    portfolio_value=buy_and_hold(data,weights,investment_amount=investment_amount)
+    pnl=pd.DataFrame((portfolio_value-portfolio_value.iloc[0]).iloc[-1])
+    pnl.columns=['PnL']
+
+    return pnl
+
+
+def compute_rebalance_pnl(data,weights,investment_amount=100,frequency='quarterly'):
+    portfolio_value=buy_and_hold(data,weights,investment_amount=investment_amount,frequency=frequency)
+    pnl=pd.DataFrame((portfolio_value-portfolio_value.iloc[0]).iloc[-1])
+    pnl.columns=['PnL']
+
+    return pnl
+    
