@@ -47,7 +47,7 @@ def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.dat
     scope_prices=scope_prices.combine_first(data)
     scope_prices=scope_prices.sort_index()
     scope_prices = scope_prices[~scope_prices.index.duplicated(keep='first')]
-    scope_prices.index=pd.to_datetime(scope_prices.index)
+
     prices=scope_prices
     
     returns=np.log(1+prices.pct_change())
