@@ -70,7 +70,7 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
 
 
 dataframe,returns_to_use=load_data(tickers=selected,start_date=dt)
-ata = pd.DataFrame({'Asset':[None],
+data = pd.DataFrame({'Asset':[None],
 'Sign':[None],
 'Limit':[None]
 })
