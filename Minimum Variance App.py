@@ -24,7 +24,7 @@ selected_number = st.slider(
 tickers=get_market_cap()['Ticker'].iloc[:selected_number].to_list()
 selected = st.multiselect("Select Crypto:", tickers,default=tickers)
 
-starting_date= st.date_input("Starting Date", datetime.datetime(2019, 7, 6))
+starting_date= st.date_input("Starting Date", datetime.datetime(2020, 1, 1))
 dt = datetime.datetime.combine(starting_date, datetime.datetime.min.time())
 
 st.write(dt)
