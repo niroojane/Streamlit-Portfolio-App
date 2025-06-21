@@ -70,6 +70,63 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
 
 
 dataframe,returns_to_use=load_data(tickers=selected,start_date=dt)
+ata = pd.DataFrame({'Asset':[None],
+'Sign':[None],
+'Limit':[None]
+})
+drop_down_list=list(dataframe.columns)+['All']
+# Define dropdown options for the 'Risk Level' column
+column_config = {'Asset':st.column_config.SelectboxColumn(
+    options=drop_down_list),
+'Sign': st.column_config.SelectboxColumn(
+    options=["=", "≥", "≤"],  # Dropdown options
+    help="Select the risk level for each asset."  # Tooltip for the column
+)
+}
+
+# Create the editable data editor with dropdown
+editable_data = st.data_editor(
+data,
+column_config=column_config,
+num_rows="dynamic",  # Allow rows to be added dynamically
+)
+
+constraint_matrix=editable_data.to_numpy()
+constraints=[]
+
+try:
+    for row in range(constraint_matrix.shape[0]):
+        temp = constraint_matrix[row, :]
+        ticker = temp[0]
+        
+        if ticker not in drop_down_list:
+            continue
+            
+        sign = temp[1]
+        limit = float(temp[2])
+
+        if ticker=='All':
+            constraint= diversification_constraint(sign,limit)
+        else:
+            position = np.where(dataframe.columns == ticker)[0][0]
+            constraint = create_constraint(sign, limit, position)
+            
+        constraints.extend(constraint)
+            
+    
+except Exception as e:
+    pass
+
+
+if 'USDCUSDT' in returns_to_use.columns:
+    
+    cash=np.where(returns_to_use.columns=='USDCUSDT')[0][0]
+
+else:
+
+    cash=[]
+
+constraints.extend([{'type': 'eq', 'fun': lambda weights: weights[cash]-0.00}])
 
 
 month=list(sorted(set(returns_to_use.index + pd.offsets.BMonthEnd(0))))
@@ -89,29 +146,18 @@ dates_end=sorted(list(set(dates_end)))
 
 results={}
 
-if 'USDCUSDT' in returns_to_use.columns:
-    
-    cash=np.where(returns_to_use.columns=='USDCUSDT')[0][0]
-
-else:
-
-    cash=[]
 
 for i in range(len(dates_end)-1):
     dataset=returns_to_use.loc[dates_end[i]:dates_end[i+1]]
     risk=RiskAnalysis(dataset)
     date=dataset.index[-1]
     
-    optimal=risk.optimize(objective='minimum_variance',constraints=[{'type': 'eq', 'fun': lambda weights: weights[cash]-0.00}])
+    optimal=risk.optimize(objective='minimum_variance',constraints=constraints)
     results[date]=np.round(optimal,6)
-    
-        
 
 rolling_optimization=pd.DataFrame(results,index=dataframe.columns).T
 rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
 rolling_optimization=rolling_optimization.sort_index()
-
-
 
 tracking={}
 portfolio={}
