@@ -67,7 +67,7 @@ def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.dat
     
     returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
 
-    return dataframe, returns
+    return dataframe, returns_to_use 
     
 dataframe,returns_to_use=load_data(selected=selected)
 
