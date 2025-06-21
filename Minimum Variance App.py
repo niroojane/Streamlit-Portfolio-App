@@ -24,52 +24,53 @@ selected_number = st.slider(
 tickers=get_market_cap()['Ticker'].iloc[:selected_number].to_list()
 selected = st.multiselect("Select Crypto:", tickers,default=tickers)
 
+starting_date= st.date_input("Starting Date", datetime.datetime(2019, 7, 6))
+dt = datetime.datetime.combine(starting_date, datetime.datetime.min.time())
+
+st.write(dt)
 
 @st.cache_data
-
-def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.datetime.today()):
+def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.datetime.today()):
 
     days=(today-start_date).days
+
+    
     remaining=days%500
     numbers_of_table=days//500
-    
-    
+
     temp_end=start_date
     scope_prices=pd.DataFrame()
     for i in range(numbers_of_table+1):
-        data=get_price(selected,temp_end)
+        data=get_price(tickers,temp_end)
         temp_end=temp_end+datetime.timedelta(500)
         scope_prices=scope_prices.combine_first(data)
-
+        
     temp_end=(today-datetime.timedelta(remaining))
-    
-    data=get_price(selected,temp_end)
-    
-    
+    data=get_price(tickers,temp_end)
     scope_prices=scope_prices.combine_first(data)
     scope_prices=scope_prices.sort_index()
     scope_prices = scope_prices[~scope_prices.index.duplicated(keep='first')]
-    # scope_prices.index=pd.to_datetime(scope_prices.index)
-    prices=scope_prices
-    
-    
-    
-    returns=np.log(1+prices.pct_change())
+    scope_prices.index=pd.to_datetime(scope_prices.index)
+
+    returns=np.log(1+scope_prices.pct_change(fill_method=None))
     returns.index=pd.to_datetime(returns.index)
-    
     with_no_na=returns.columns[np.where((returns.isna().sum()<30))]
     returns_to_use=returns[with_no_na].sort_index()
-    dataframe=prices[with_no_na].sort_index()
-    # dataframe.index=pd.to_datetime(dataframe.index)
-    # dataframe = dataframe[~dataframe.index.duplicated(keep='first')]
-    
-    # returns_to_use.index=pd.to_datetime(returns_to_use.index)
-    
-    returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
 
-    return dataframe, returns_to_use 
+
+    dataframe=scope_prices[with_no_na].sort_index()
+    dataframe.index=pd.to_datetime(dataframe.index)
     
-dataframe,returns_to_use=load_data(selected=selected)
+    returns_to_use.index=pd.to_datetime(returns_to_use.index)
+    returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
+    
+    return dataframe, returns_to_use
+
+
+
+dataframe,returns_to_use=load_data(tickers=selected,start_date=dt)
+
+st.dataframe(dataframe)
 
 month=list(sorted(set(returns_to_use.index + pd.offsets.BMonthEnd(0))))
 #month_end=pd.to_datetime(mrat_wo_na.index)
@@ -95,32 +96,28 @@ if 'USDCUSDT' in returns_to_use.columns:
 else:
 
     cash=[]
-    
+
 for i in range(len(dates_end)-1):
+    dataset=returns_to_use.loc[dates_end[i]:dates_end[i+1]]
+    risk=RiskAnalysis(dataset)
+    date=dataset.index[-1]
     
-    try:
-        dataset=returns_to_use.loc[dates_end[i]:dates_end[i+1]]        
-        risk=RiskAnalysis(dataset)
-        date=dataset.index[-1]
+    optimal=risk.optimize(objective='minimum_variance',constraints=[{'type': 'eq', 'fun': lambda weights: weights[cash]-0.00}])
+    results[date]=np.round(optimal,6)
+    
         
-        optimal=risk.optimize(objective='minimum_variance',constraints=[{'type': 'eq', 'fun': lambda weights: weights[cash]-0.00}#,
-                                                                       ])# {'type': 'eq', 'fun': lambda weights: weights[gold_positions]-0.00}])
-        
-        results[date]=np.round(optimal,6)
-        
-    except Exception as e:
-        
-        pass
 
 rolling_optimization=pd.DataFrame(results,index=dataframe.columns).T
+rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
 rolling_optimization=rolling_optimization.sort_index()
+
 
 
 tracking={}
 portfolio={}
 investment_amount=1
 initial_amount=investment_amount
-perf=dataframe.pct_change()
+perf=dataframe.pct_change(fill_method=None)
 transaction_fee=0.005
 gold_limit=0.05
 weight_dict={col: 1/returns_to_use.shape[1] for col in returns_to_use.columns}
@@ -217,7 +214,7 @@ for key in portfolio.keys():
 performance['Fund']=historical_portfolio.sum(axis=1)
 performance['Bitcoin']=dataframe['BTCUSDT']
 #performance['Mantra']=dataframe['OMUSDT']
-
+performance=performance.dropna()
 performance_pct=performance.copy()
 performance_pct=performance_pct.pct_change()
 
@@ -286,7 +283,7 @@ selmaxd = selmax.strftime('%Y-%m-%d')
 
 mask = (performance_pct.index >= selmind) & (performance_pct.index <= selmaxd)
 
-portfolio_returns=(1+performance_pct.loc[mask]).cumprod()*100
+portfolio_returns=(1+performance_pct.loc[mask]).cumprod()*1
 
 fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
 st.plotly_chart(fig)
