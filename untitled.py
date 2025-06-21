@@ -12,7 +12,7 @@ options = [
 ]
 
 base_endpoint = st.selectbox(label="Base endpoint", options=options)
-url = f"{base_endpoint}api/v3/ticker/24hr"
+url = f"{base_endpoint}/api/v3/ticker/24hr"
 st.write(url)
 response = requests.get(url)
 st.write(response.json())
