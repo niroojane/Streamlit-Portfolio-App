@@ -42,7 +42,7 @@ def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.dat
         temp_end=temp_end+datetime.timedelta(500)
         scope_prices=scope_prices.combine_first(data)
         
-    temp_end=(today-datetime.timedelta(days))
+    temp_end=(today-datetime.timedelta(remaining))
     data=get_price(selected,temp_end)
     scope_prices=scope_prices.combine_first(data)
     scope_prices=scope_prices.sort_index()
