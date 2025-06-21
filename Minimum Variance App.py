@@ -283,11 +283,11 @@ selmaxd = selmax.strftime('%Y-%m-%d')
 
 mask = (performance_pct.index >= selmind) & (performance_pct.index <= selmaxd)
 
-portfolio_returns=(1+performance_pct.loc[mask]).cumprod()*1
+portfolio_returns=(1+performance_pct.loc[mask]).cumprod()*100
 
 fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
 st.plotly_chart(fig)
-
+st.dataframe((1+performance_pct.loc[mask]).cumprod()*100)
 
 
 
