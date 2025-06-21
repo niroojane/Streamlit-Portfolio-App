@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
 
-from RiskMetrics import RiskAnalysis
+from RiskMetrics import RiskAnalysis,create_constraint,diversification_constraint
 from Price_Endpoint import *
 
 
