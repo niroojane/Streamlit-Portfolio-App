@@ -56,9 +56,7 @@ def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.dat
     with_no_na=returns.columns[np.where((returns.isna().sum()<30))]
     returns_to_use=returns[with_no_na].sort_index()
     dataframe=prices[with_no_na].sort_index()
-    dataframe.index=pd.to_datetime(dataframe.index)
     
-    returns_to_use.index=pd.to_datetime(returns_to_use.index)
     returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
 
     return dataframe,returns_to_use
