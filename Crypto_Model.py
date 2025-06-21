@@ -26,9 +26,8 @@ selected = st.multiselect("Select Crypto:", tickers,default=tickers)
 
 
 @st.cache_data
+
 def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.datetime.today()):
-# start_date=datetime.datetime(2020,1,1)
-# today=datetime.datetime.today()
 
     days=(today-start_date).days
     remaining=days%500
@@ -41,14 +40,19 @@ def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.dat
         data=get_price(selected,temp_end)
         temp_end=temp_end+datetime.timedelta(500)
         scope_prices=scope_prices.combine_first(data)
-        
+
     temp_end=(today-datetime.timedelta(remaining))
+    
     data=get_price(selected,temp_end)
+    
+    
     scope_prices=scope_prices.combine_first(data)
     scope_prices=scope_prices.sort_index()
     scope_prices = scope_prices[~scope_prices.index.duplicated(keep='first')]
-
+    # scope_prices.index=pd.to_datetime(scope_prices.index)
     prices=scope_prices
+    
+    
     
     returns=np.log(1+prices.pct_change())
     returns.index=pd.to_datetime(returns.index)
@@ -56,11 +60,15 @@ def load_data(selected,start_date=datetime.datetime(2020,1,1),today=datetime.dat
     with_no_na=returns.columns[np.where((returns.isna().sum()<30))]
     returns_to_use=returns[with_no_na].sort_index()
     dataframe=prices[with_no_na].sort_index()
+    # dataframe.index=pd.to_datetime(dataframe.index)
+    # dataframe = dataframe[~dataframe.index.duplicated(keep='first')]
+    
+    # returns_to_use.index=pd.to_datetime(returns_to_use.index)
     
     returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
 
-    return dataframe,returns_to_use
-
+    return dataframe, returns
+    
 dataframe,returns_to_use=load_data(selected=selected)
 
 month=list(sorted(set(returns_to_use.index + pd.offsets.BMonthEnd(0))))
