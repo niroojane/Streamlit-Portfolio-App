@@ -22,12 +22,13 @@ selected_number = st.slider(
     step=1           
 )
 tickers=get_market_cap()['Ticker'].iloc[:selected_number].to_list()
+market_cap_table=get_market_cap()[['Long name','Ticker','Market Cap','Supply']].set_index('Ticker').iloc[:selected_number]
 selected = st.multiselect("Select Crypto:", tickers,default=tickers)
+
+st.dataframe(market_cap_table)
 
 starting_date= st.date_input("Starting Date", datetime.datetime(2020, 1, 1))
 dt = datetime.datetime.combine(starting_date, datetime.datetime.min.time())
-
-st.write(dt)
 
 @st.cache_data
 def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.datetime.today()):
@@ -70,7 +71,6 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
 
 dataframe,returns_to_use=load_data(tickers=selected,start_date=dt)
 
-st.dataframe(dataframe)
 
 month=list(sorted(set(returns_to_use.index + pd.offsets.BMonthEnd(0))))
 #month_end=pd.to_datetime(mrat_wo_na.index)
