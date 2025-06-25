@@ -11,21 +11,21 @@ import numpy as np
 # In[2]:
 
 
-def rebalanced_portfolio(data,weights,investment_amount=100,frequency='quarterly'):
+def rebalanced_portfolio(data,weights,investment_amount=100,frequency='Quarterly'):
 
     perf=data.pct_change()
 
     prices_dict=data.T.to_dict()
     #perf_dict=perf.T.to_dict()
 
-    if frequency=='quarterly':
+    if frequency=='Quarterly':
         month=list(sorted(set(data.index + pd.offsets.BQuarterEnd(0))))
     
-    elif frequency=='monthly':
+    elif frequency=='Monthly':
 
         month=list(sorted(set(data.index + pd.offsets.BMonthEnd(0))))
 
-    elif frequency=='year_end':
+    elif frequency=='Yearly':
         month=list(sorted(set(data.index + pd.offsets.BYearEnd(0))))
         
     
@@ -85,7 +85,6 @@ def rebalanced_portfolio(data,weights,investment_amount=100,frequency='quarterly
     return pd.DataFrame(portfolio).T*data
    
 
-
 # In[3]:
 
 
@@ -95,7 +94,7 @@ def buy_and_hold(data,weights,investment_amount=100):
     
     return data*shares
 
-def compute_buy_and_hold_pnl(data,weights,investment_amount=100):
+def buy_and_hold_pnl(data,weights,investment_amount=100):
     portfolio_value=buy_and_hold(data,weights,investment_amount=investment_amount)
     pnl=pd.DataFrame((portfolio_value-portfolio_value.iloc[0]).iloc[-1])
     pnl.columns=['PnL']
@@ -103,10 +102,44 @@ def compute_buy_and_hold_pnl(data,weights,investment_amount=100):
     return pnl
 
 
-def compute_rebalance_pnl(data,weights,investment_amount=100,frequency='quarterly'):
-    portfolio_value=buy_and_hold(data,weights,investment_amount=investment_amount,frequency=frequency)
+def rebalanced_pnl(data,weights,investment_amount=100,frequency='Quarterly'):
+    portfolio_value=rebalanced_portfolio(data,weights,investment_amount=investment_amount,frequency=frequency)
     pnl=pd.DataFrame((portfolio_value-portfolio_value.iloc[0]).iloc[-1])
     pnl.columns=['PnL']
 
     return pnl
+
+
+def rebalanced_book_cost(prices,weights,investment_amount=100,frequency='Quarterly'):
+    
+    quantities=rebalanced_portfolio(prices,weights,investment_amount=investment_amount,frequency=frequency)/prices
+    
+    quantities_when_rebalanced=quantities.loc[rebalancing_dates]
+    trading_prices=prices.loc[rebalancing_dates]
+    trading_prices.loc[prices.index[0]]=prices.loc[prices.index[0]]
+    trading_prices=trading_prices.sort_index()
+    
+    variation=quantities_when_rebalanced-quantities_when_rebalanced.shift(1)
+    variation.iloc[0]=quantities.iloc[0]
+    buy_variation=variation.copy()
+    
+    buy_variation[buy_variation< 0] = 0
+    buy_variation.loc[prices.index[0]]=quantities.loc[prices.index[0]]
+    buy_variation=buy_variation.sort_index()
+    quantities_over_time=buy_variation.cumsum()
+    amount_traded=quantities_over_time*trading_prices
+    book_cost=(amount_traded.shift(-1)+amount_traded)/(quantities_over_time.shift(-1)+quantities_over_time).ffill()
+
+    book_cost_history=pd.DataFrame()
+    book_cost_history.index=prices.index
+    
+    for asset in prices.columns:
+        
+        book_cost_history[asset]=amount_traded[asset]
+    
+    book_cost.iloc[-1]=amount_traded.iloc[-1]/quantities_over_time.iloc[-1]
+    book_cost_history=book_cost_history.ffill()
+    return book_cost_history
+    
+
     
