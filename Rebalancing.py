@@ -138,15 +138,18 @@ def rebalanced_book_cost(data,weights,investment_amount=100,frequency='Quarterly
 
             for j in range(col):
 
-                if current_quantities[j]>previous_quantities[j]:
-
-                    cumulative_quantities[i,j]=cumulative_quantities[i-1,j]+current_quantities[j]-previous_quantities[j]
-
-                    trading_prices[i]=prices_array[i-1]
-
+                if current_quantities[j] != previous_quantities[j]:
+                    delta = current_quantities[j] - previous_quantities[j]
+                    
+                    if delta > 0:
+                        cumulative_quantities[i, j] = cumulative_quantities[i-1, j] + delta
+                        trading_prices[i, j] = prices_array[i - 1, j]
+                    else:
+                        cumulative_quantities[i, j] = cumulative_quantities[i-1, j] + delta
+                        trading_prices[i, j] = trading_prices[i-1, j] 
                 else:
-                    cumulative_quantities[i,j]=cumulative_quantities[i-1,j]
-                    trading_prices[i]=trading_prices[i-1]
+                    cumulative_quantities[i, j] = cumulative_quantities[i-1, j]
+                    trading_prices[i, j] = trading_prices[i-1, j]
         else:
 
             cumulative_quantities[0]=quantities_array[0]
