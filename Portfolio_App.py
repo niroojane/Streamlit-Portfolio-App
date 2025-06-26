@@ -192,7 +192,7 @@ if uploaded_file:
         with st.sidebar:
             st.header("⚙️ Settings")
             
-            bench = st.selectbox("Benchmark :", list(allocation_dict.keys()))
+            benchmark = st.selectbox("Benchmark :", list(allocation_dict.keys()))
             frequency = st.selectbox("Rebalancing Frequency:", ['Monthly','Quarterly','Yearly'])
     
         portfolio_returns=pd.DataFrame()
