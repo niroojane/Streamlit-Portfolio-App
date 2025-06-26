@@ -218,32 +218,36 @@ if uploaded_file:
         st.dataframe(perfs.T)
         
         st.subheader("Risk")
-    
+            
         tracking_error_daily={}
         tracking_error_monthly={}
-        monthly_returns=prices.resample('ME').last().pct_change()
-        
-        
+        monthly_returns=prices.resample('ME').last().iloc[-180:].pct_change()
+    
+    
         for key in allocation_dict:
-            tracking_error_daily['Buy and Hold '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[bench])/np.sqrt(252)*np.sqrt(260)
-            tracking_error_daily['Rebalanced '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[bench])/np.sqrt(252)*np.sqrt(260)
-            tracking_error_monthly['Buy and Hold '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[bench])/np.sqrt(252)*np.sqrt(12)
-            tracking_error_monthly['Rebalanced '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[bench])/np.sqrt(252)*np.sqrt(12)
-            
+            tracking_error_daily['Buy and Hold '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
+            tracking_error_daily['Rebalanced '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
+            tracking_error_monthly['Buy and Hold '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
+            tracking_error_monthly['Rebalanced '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
+    
         tracking_error_daily=pd.DataFrame(tracking_error_daily.values(),index=tracking_error_daily.keys(),columns=['Tracking Error (daily)'])
         tracking_error_monthly=pd.DataFrame(tracking_error_monthly.values(),index=tracking_error_monthly.keys(),columns=['Tracking Error (Monthly)'])
+    
+        dates_drawdown=((portfolio_returns-portfolio_returns.cummax())/portfolio_returns.cummax()).idxmin().dt.date
         
-        dates_drawdown=((portfolio_returns-portfolio_returns.cummax())/portfolio_returns.cummax()).idxmin()
-        monthly_vol=portfolio_returns.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
-        
+        vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
+        monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
+    
         drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
         Q=0.05
         intervals=np.arange(Q, 1, 0.0005, dtype=float)
         cvar=monthly_vol*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
-        vol=portfolio_returns.pct_change().iloc[-360:].std()*np.sqrt(260)
-        
+    
         risk=pd.concat([vol,tracking_error_daily,monthly_vol,tracking_error_monthly,cvar,drawdown,dates_drawdown],axis=1).round(4)
-        risk.columns=['Annualized Volatility (daily)','TEV (daily)','Annualized Volatility (Monthly)','TEV (Monthly)','CVar Parametric '+str(int((1-Q)*100))+'%','Max Drawdown','Date of Max Drawdown']
+        risk.columns=['Annualized Volatility (daily)','TEV (daily)',
+                      'Annualized Volatility (Monthly)','TEV (Monthly)',
+                      'CVar Parametric '+str(int((1-Q)*100))+'%',
+                      'Max Drawdown','Date of Max Drawdown']
     
         st.dataframe(risk.T)
         
