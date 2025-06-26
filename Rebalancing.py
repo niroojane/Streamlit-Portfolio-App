@@ -10,14 +10,8 @@ import numpy as np
 
 # In[2]:
 
-
-def rebalanced_portfolio(data,weights,investment_amount=100,frequency='Quarterly'):
-
-    perf=data.pct_change()
-
-    prices_dict=data.T.to_dict()
-    #perf_dict=perf.T.to_dict()
-
+def get_rebalancing_dates(data,frequency='Quarterly'):
+    
     if frequency=='Quarterly':
         month=list(sorted(set(data.index + pd.offsets.BQuarterEnd(0))))
     
@@ -39,9 +33,20 @@ def rebalanced_portfolio(data,weights,investment_amount=100,frequency='Quarterly
     closest_dates=sorted(closest_dates)
     
     rebalancing_dates=sorted(list(closest_dates))
+    
+    return rebalancing_dates
+
+def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency='Quarterly'):
+
+    perf=data.pct_change()
+    prices_dict=data.T.to_dict()
+    #perf_dict=perf.T.to_dict()
+
+
     dates=sorted(list(prices_dict.keys()))    
-
-
+    
+    rebalancing_dates=get_rebalancing_dates(data,frequency=frequency)
+    
     weights=dict(zip((data.columns),weights))
     
     
@@ -81,12 +86,16 @@ def rebalanced_portfolio(data,weights,investment_amount=100,frequency='Quarterly
     
     
         portfolio[dates[j+1]]=shares
+        
+    quantities=pd.DataFrame(portfolio).T
 
-    return pd.DataFrame(portfolio).T*data
-   
+    return quantities
 
-# In[3]:
-
+def rebalanced_portfolio(data,weights,investment_amount=100,frequency='Quarterly'):
+    
+    quantities=rebalanced_portfolio_quantities(data,weights,investment_amount=investment_amount,frequency=frequency)
+    
+    return quantities*data
 
 def buy_and_hold(data,weights,investment_amount=100):
 
@@ -110,13 +119,15 @@ def rebalanced_pnl(data,weights,investment_amount=100,frequency='Quarterly'):
     return pnl
 
 
-def rebalanced_book_cost(prices,weights,investment_amount=100,frequency='Quarterly'):
+def rebalanced_book_cost(data,weights,investment_amount=100,frequency='Quarterly'):
     
-    quantities=rebalanced_portfolio(prices,weights,investment_amount=investment_amount,frequency=frequency)/prices
+    rebalancing_dates=get_rebalancing_dates(data,frequency=frequency)
+    
+    quantities=rebalanced_portfolio_quantities(data,weights,investment_amount=investment_amount,frequency=frequency)
     
     quantities_when_rebalanced=quantities.loc[rebalancing_dates]
-    trading_prices=prices.loc[rebalancing_dates]
-    trading_prices.loc[prices.index[0]]=prices.loc[prices.index[0]]
+    trading_prices=data.loc[rebalancing_dates]
+    trading_prices.loc[data.index[0]]=data.loc[data.index[0]]
     trading_prices=trading_prices.sort_index()
     
     variation=quantities_when_rebalanced-quantities_when_rebalanced.shift(1)
@@ -124,16 +135,16 @@ def rebalanced_book_cost(prices,weights,investment_amount=100,frequency='Quarter
     buy_variation=variation.copy()
     
     buy_variation[buy_variation< 0] = 0
-    buy_variation.loc[prices.index[0]]=quantities.loc[prices.index[0]]
+    buy_variation.loc[data.index[0]]=quantities.loc[data.index[0]]
     buy_variation=buy_variation.sort_index()
     quantities_over_time=buy_variation.cumsum()
     amount_traded=quantities_over_time*trading_prices
     book_cost=(amount_traded.shift(-1)+amount_traded)/(quantities_over_time.shift(-1)+quantities_over_time).ffill()
 
     book_cost_history=pd.DataFrame()
-    book_cost_history.index=prices.index
+    book_cost_history.index=data.index
     
-    for asset in prices.columns:
+    for asset in data.columns:
         
         book_cost_history[asset]=amount_traded[asset]
     
