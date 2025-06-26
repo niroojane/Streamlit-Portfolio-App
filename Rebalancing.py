@@ -103,7 +103,7 @@ def buy_and_hold(data,weights,investment_amount=100):
     
     return data*shares
 
-def buy_and_hold_pnl(data,weights,investment_amount=100):
+def buy_and_hold_contribution(data,weights,investment_amount=100):
     portfolio_value=buy_and_hold(data,weights,investment_amount=investment_amount)
     pnl=pd.DataFrame((portfolio_value-portfolio_value.iloc[0]).iloc[-1])
     pnl.columns=['PnL']
@@ -111,7 +111,7 @@ def buy_and_hold_pnl(data,weights,investment_amount=100):
     return pnl
 
 
-def rebalanced_pnl(data,weights,investment_amount=100,frequency='Quarterly'):
+def rebalanced_contribution(data,weights,investment_amount=100,frequency='Quarterly'):
     portfolio_value=rebalanced_portfolio(data,weights,investment_amount=investment_amount,frequency=frequency)
     pnl=pd.DataFrame((portfolio_value-portfolio_value.iloc[0]).iloc[-1])
     pnl.columns=['PnL']
@@ -121,36 +121,40 @@ def rebalanced_pnl(data,weights,investment_amount=100,frequency='Quarterly'):
 
 def rebalanced_book_cost(data,weights,investment_amount=100,frequency='Quarterly'):
     
-    rebalancing_dates=get_rebalancing_dates(data,frequency=frequency)
-    
     quantities=rebalanced_portfolio_quantities(data,weights,investment_amount=investment_amount,frequency=frequency)
-    
-    quantities_when_rebalanced=quantities.loc[rebalancing_dates]
-    trading_prices=data.loc[rebalancing_dates]
-    trading_prices.loc[data.index[0]]=data.loc[data.index[0]]
-    trading_prices=trading_prices.sort_index()
-    
-    variation=quantities_when_rebalanced-quantities_when_rebalanced.shift(1)
-    variation.iloc[0]=quantities.iloc[0]
-    buy_variation=variation.copy()
-    
-    buy_variation[buy_variation< 0] = 0
-    buy_variation.loc[data.index[0]]=quantities.loc[data.index[0]]
-    buy_variation=buy_variation.sort_index()
-    quantities_over_time=buy_variation.cumsum()
-    amount_traded=quantities_over_time*trading_prices
-    book_cost=(amount_traded.shift(-1)+amount_traded)/(quantities_over_time.shift(-1)+quantities_over_time).ffill()
 
-    book_cost_history=pd.DataFrame()
-    book_cost_history.index=data.index
-    
-    for asset in data.columns:
-        
-        book_cost_history[asset]=amount_traded[asset]
-    
-    book_cost.iloc[-1]=amount_traded.iloc[-1]/quantities_over_time.iloc[-1]
-    book_cost_history=book_cost_history.ffill()
-    return book_cost_history
+    prices_array=data.to_numpy()
+    quantities_array=quantities.to_numpy()
+
+    row,col=quantities_array.shape
+    cumulative_quantities=np.zeros(quantities_array.shape)
+    trading_prices=np.zeros(prices_array.shape)
+
+    for i in range(row):
+        if i>0:
+
+            previous_quantities=quantities_array[i-1]
+            current_quantities=quantities_array[i]
+
+            for j in range(col):
+
+                if current_quantities[j]>previous_quantities[j]:
+
+                    cumulative_quantities[i,j]=cumulative_quantities[i-1,j]+current_quantities[j]-previous_quantities[j]
+
+                    trading_prices[i]=prices_array[i-1]
+
+                else:
+                    cumulative_quantities[i,j]=cumulative_quantities[i-1,j]
+                    trading_prices[i]=trading_prices[i-1]
+        else:
+
+            cumulative_quantities[0]=quantities_array[0]
+            trading_prices[0]=prices_array[0]
+
+    book_cost_array=trading_prices*cumulative_quantities
+    cost=pd.DataFrame(book_cost_array,index=data.index,columns=data.columns)
+    return cost
     
 
     
