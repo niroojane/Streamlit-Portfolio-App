@@ -120,7 +120,7 @@ def rebalanced_contribution(data,weights,investment_amount=100,frequency='Quarte
 
 
 def rebalanced_book_cost(data,weights,investment_amount=100,frequency='Quarterly'):
-    
+
     quantities=rebalanced_portfolio_quantities(data,weights,investment_amount=investment_amount,frequency=frequency)
 
     prices_array=data.to_numpy()
@@ -129,6 +129,7 @@ def rebalanced_book_cost(data,weights,investment_amount=100,frequency='Quarterly
     row,col=quantities_array.shape
     cumulative_quantities=np.zeros(quantities_array.shape)
     trading_prices=np.zeros(prices_array.shape)
+    amount_traded=np.zeros(prices_array.shape)
 
     for i in range(row):
         if i>0:
@@ -140,23 +141,28 @@ def rebalanced_book_cost(data,weights,investment_amount=100,frequency='Quarterly
 
                 if current_quantities[j] != previous_quantities[j]:
                     delta = current_quantities[j] - previous_quantities[j]
-                    
+
                     if delta > 0:
                         cumulative_quantities[i, j] = cumulative_quantities[i-1, j] + delta
                         trading_prices[i, j] = prices_array[i - 1, j]
+                        amount_traded[i,j]=delta*prices_array[i - 1, j]+amount_traded[i-1,j]
                     else:
                         cumulative_quantities[i, j] = cumulative_quantities[i-1, j] + delta
-                        trading_prices[i, j] = trading_prices[i-1, j] 
+                        trading_prices[i, j] = trading_prices[i-1, j]
+                        amount_traded[i,j]=delta*trading_prices[i - 1, j]+amount_traded[i-1,j]
                 else:
                     cumulative_quantities[i, j] = cumulative_quantities[i-1, j]
                     trading_prices[i, j] = trading_prices[i-1, j]
+                    amount_traded[i,j]=amount_traded[i-1,j]
+
         else:
 
             cumulative_quantities[0]=quantities_array[0]
             trading_prices[0]=prices_array[0]
+            amount_traded[0]=trading_prices[0]*quantities_array[0]
 
-    book_cost_array=trading_prices*cumulative_quantities
-    cost=pd.DataFrame(book_cost_array,index=data.index,columns=data.columns)
+    cost=pd.DataFrame(amount_traded,index=prices.index,columns=prices.columns).cumsum()
+
     return cost
     
 
