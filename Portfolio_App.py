@@ -367,7 +367,15 @@ if uploaded_file:
             metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
             metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
         
-        frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
+
+        @st.cache_data
+
+        def get_frontier():
+
+            return portfolio.efficient_frontier()
+        
+        # frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
+        frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = get_frontier()
         frontier = pd.DataFrame(
             {
                 "Returns": frontier_returns,
