@@ -146,7 +146,7 @@ if uploaded_file:
         allocation['Optimal Portfolio']=optimized_weights.tolist()
         allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
         
-        allocation_dataframe=pd.DataFrame(allocation,index=returns.columns).T
+        allocation_dataframe=pd.DataFrame(allocation,index=returns.columns).T.round(6)
         
         
         allocation_dataframe = st.data_editor(allocation_dataframe, num_rows="dynamic")
@@ -348,7 +348,7 @@ if uploaded_file:
             optimal_results[idx]=allocation_dict[idx].tolist()
 
 
-        optimal_results=pd.DataFrame(optimal_results,index=prices.columns).T
+        optimal_results=pd.DataFrame(optimal_results,index=prices.columns).T.round(6)
         editable_weights = st.data_editor(optimal_results, num_rows="dynamic")
 
         weight_matrix={}
