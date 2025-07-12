@@ -371,7 +371,7 @@ if uploaded_file:
         @st.cache_data
 
         def get_frontier(returns):
-            portfolio_class=RiskAnalysis()
+            portfolio_class=RiskAnalysis(returns)
             return portfolio_class.efficient_frontier()
         
         # frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
