@@ -353,7 +353,7 @@ if uploaded_file:
 
         weight_matrix={}
         
-        for idx in optimal_results.index:
+        for idx in editable_weights.index:
             weight_matrix[idx]=editable_weights.loc[idx].to_numpy()
 
         metrics={}
