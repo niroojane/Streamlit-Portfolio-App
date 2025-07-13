@@ -68,13 +68,13 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
     returns_to_use=returns[with_no_na].sort_index()
 
 
-    dataframe=scope_prices[with_no_na].sort_index()
+    dataframe=scope_prices[with_no_na].sort_index().ffill()
     dataframe.index=pd.to_datetime(dataframe.index)
     
     returns_to_use.index=pd.to_datetime(returns_to_use.index)
     returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
     
-    return dataframe.iloc[:-1], returns_to_use.iloc[:-1]
+    return dataframe., returns_to_use
 
 
 st.subheader("Constraints")
