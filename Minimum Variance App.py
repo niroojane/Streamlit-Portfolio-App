@@ -60,7 +60,7 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
     trx = trx[~trx.index.duplicated(keep='first')]
     trx=trx.sort_index().dropna()
     trx_returns=trx.pct_change().sort_index()
-    scope_prices=pd.concat([trx,scope_prices],axis=1)
+    scope_prices=pd.concat([trx,scope_prices],axis=1).ffill()
 
     returns=np.log(1+scope_prices.pct_change(fill_method=None))
     returns.index=pd.to_datetime(returns.index)
@@ -68,7 +68,7 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
     returns_to_use=returns[with_no_na].sort_index()
 
 
-    dataframe=scope_prices[with_no_na].sort_index().ffill()
+    dataframe=scope_prices[with_no_na].sort_index()
     dataframe.index=pd.to_datetime(dataframe.index)
     
     returns_to_use.index=pd.to_datetime(returns_to_use.index)
