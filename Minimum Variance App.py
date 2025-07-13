@@ -12,6 +12,8 @@ import plotly.graph_objects as go
 
 from RiskMetrics import RiskAnalysis,create_constraint,diversification_constraint
 from Price_Endpoint import *
+from Stock_Data import get_close
+
 
 
 selected_number = st.slider(
@@ -52,6 +54,13 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
     scope_prices=scope_prices.sort_index()
     scope_prices = scope_prices[~scope_prices.index.duplicated(keep='first')]
     scope_prices.index=pd.to_datetime(scope_prices.index)
+
+    trx=get_close(['TRX-USD'],start=start_date.strftime("%Y-%m-%d"),end=today.strftime("%Y-%m-%d"))
+    trx.index=pd.to_datetime(trx.index)
+    trx = trx[~trx.index.duplicated(keep='first')]
+    trx=trx.sort_index().dropna()
+    trx_returns=trx.pct_change().sort_index()
+    scope_prices=pd.concat([trx,scope_prices],axis=1)
 
     returns=np.log(1+scope_prices.pct_change(fill_method=None))
     returns.index=pd.to_datetime(returns.index)
