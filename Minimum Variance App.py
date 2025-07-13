@@ -74,7 +74,7 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
     returns_to_use.index=pd.to_datetime(returns_to_use.index)
     returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
     
-    return dataframe., returns_to_use
+    return dataframe, returns_to_use
 
 
 st.subheader("Constraints")
