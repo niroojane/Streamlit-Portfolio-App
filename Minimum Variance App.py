@@ -281,23 +281,50 @@ month_year=performance.index.strftime('%Y-%m')
 month_year=sorted(list(set(month_year)))
 
 year_returns={}
-for year in years:
+year_vol={}
+year_tracking_error={}
+year_sharpe_ratio={}
 
+for year in years:
+    temp=performance.loc[str(year)].pct_change()
+    year_vol[year]=temp.std()*np.sqrt(252)
+    year_tracking_error[year]=(temp['Fund']-temp['Bitcoin']).std()*np.sqrt(252)
     perf_year=performance.loc[str(year)].iloc[-1]/performance.loc[str(year)].iloc[0]-1
+    year_sharpe_ratio[year]=perf_year/(temp.std()*np.sqrt(252))
     year_returns[year]=perf_year
 
-year_returns[years[-1]]=performance.loc[str(years[-1])].iloc[-2]/performance.loc[str(years[-1])].iloc[0]-1
 year_returns_dataframe=pd.DataFrame(year_returns)
+year_vol_dataframe=pd.DataFrame(year_vol)
+year_tracking_error_dataframe=pd.DataFrame(year_tracking_error.items(),columns=['Date','Tracking Error']).set_index('Date').T.round(6)
+year_sharpe_ratio_dataframe=pd.DataFrame(year_sharpe_ratio)
+
 st.dataframe(year_returns_dataframe)
+st.dataframe(year_vol_dataframe)
+st.dataframe(year_tracking_error_dataframe)
+st.dataframe(year_sharpe_ratio_dataframe)
 
 month_returns={}
-for month in month_year:
+month_vol={}
+month_tracking_error={}
+monthly_sharpe_ratio={}
 
+for month in month_year:
+    temp=performance.loc[str(month)].pct_change()
+    month_vol[month]=temp.std()*np.sqrt(252)
+    month_tracking_error[month]=(temp['Fund']-temp['Bitcoin']).std()*np.sqrt(252)
     perf_year=performance.loc[str(month)].iloc[-1]/performance.loc[str(month)].iloc[0]-1
     month_returns[month]=perf_year
+    monthly_sharpe_ratio[month]=perf_year/(temp.std()*np.sqrt(252))
 
 month_returns_dataframe=pd.DataFrame(month_returns)
+month_vol_dataframe=pd.DataFrame(month_vol)
+month_tracking_error_dataframe=pd.DataFrame(month_tracking_error.items(),columns=['Date','Tracking Error']).set_index('Date').T.round(6)
+month_sharpe_ratio_dataframe=pd.DataFrame(monthly_sharpe_ratio)
+
 st.dataframe(month_returns_dataframe)
+st.dataframe(month_vol_dataframe)
+st.dataframe(month_tracking_error_dataframe)
+st.dataframe(month_sharpe_ratio_dataframe)
 
 st.subheader("Indicators")
 
