@@ -301,7 +301,7 @@ year_sharpe_ratio_dataframe=pd.DataFrame(year_sharpe_ratio)
 st.subheader("Yearly Returns")
 st.dataframe(year_returns_dataframe)
 
-st.subheader("Yearly Volatity")
+st.subheader("Yearly Volatility")
 st.dataframe(year_vol_dataframe)
 
 st.subheader("Yearly Tracking Error")
