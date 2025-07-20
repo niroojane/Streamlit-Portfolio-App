@@ -259,7 +259,7 @@ st.dataframe(weights)
 # st.dataframe(portfolio_composition)
 
 
-st.subheader("Returns")
+st.header("Yearly Metrics")
 
 historical_portfolio=pd.DataFrame()
 performance=pd.DataFrame()
@@ -298,9 +298,16 @@ year_vol_dataframe=pd.DataFrame(year_vol)
 year_tracking_error_dataframe=pd.DataFrame(year_tracking_error.items(),columns=['Date','Tracking Error']).set_index('Date').T.round(6)
 year_sharpe_ratio_dataframe=pd.DataFrame(year_sharpe_ratio)
 
+st.subheader("Yearly Returns")
 st.dataframe(year_returns_dataframe)
+
+st.subheader("Yearly Volatity")
 st.dataframe(year_vol_dataframe)
+
+st.subheader("Yearly Tracking Error")
 st.dataframe(year_tracking_error_dataframe)
+
+st.subheader("Yearly Sharpe Ratio")
 st.dataframe(year_sharpe_ratio_dataframe)
 
 month_returns={}
@@ -321,13 +328,21 @@ month_vol_dataframe=pd.DataFrame(month_vol)
 month_tracking_error_dataframe=pd.DataFrame(month_tracking_error.items(),columns=['Date','Tracking Error']).set_index('Date').T.round(6)
 month_sharpe_ratio_dataframe=pd.DataFrame(monthly_sharpe_ratio)
 
+st.header("Monthly Metrics")
+
+st.subheader("Monthly Returns")
 st.dataframe(month_returns_dataframe)
+
+st.subheader("Monthly Volatility")
 st.dataframe(month_vol_dataframe)
+
+st.subheader("Monthly Tracking Error")
 st.dataframe(month_tracking_error_dataframe)
+
+st.subheader("Monthly Sharpe Ratio")
 st.dataframe(month_sharpe_ratio_dataframe)
 
 st.subheader("Indicators")
-
 
 metrics={}
 metrics['Tracking Error']=(performance_pct['Fund']-performance_pct['Bitcoin']).std()*np.sqrt(252)
