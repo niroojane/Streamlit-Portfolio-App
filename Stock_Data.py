@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Niroojane Selvam
+# Licensed under the MIT License. See LICENSE file in the project root for full license information.
+
+
 #!/usr/bin/env python
 # coding: utf-8
 
