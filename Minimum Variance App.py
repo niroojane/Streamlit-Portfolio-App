@@ -193,14 +193,13 @@ for i in range(len(dates_end)-1):
 
     if dates_end[i]>dates_end[0]:
 
-        top50=rolling_optimization.loc[dates_end[i]]
-        top50_dict=rolling_optimization.loc[dates_end[i]].to_dict()
+        weight_at_date_dict=rolling_optimization.loc[dates_end[i]].to_dict()
         weight_dict={}
 
         for key in temp.columns:
 
-            if key in top50_dict: 
-                weight_dict[key]=top50_dict[key]
+            if key in weight_at_date_dict: 
+                weight_dict[key]=weight_at_date_dict[key]
             else:
                 weight_dict[key]=0
 
