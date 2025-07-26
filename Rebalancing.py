@@ -123,7 +123,7 @@ def rebalanced_contribution(data,weights,investment_amount=100,frequency='Quarte
     return pnl
 
 
-def rebalanced_book_cost(data,quantities,investment_amount=100,frequency='Quarterly'):
+def rebalanced_book_cost(data,quantities,investment_amount=100):
 
     prices_array = data.to_numpy()
     quantities_array = quantities.to_numpy()
