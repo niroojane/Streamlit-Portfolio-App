@@ -173,35 +173,36 @@ rolling_optimization=pd.DataFrame(results,index=dataframe.columns).T
 rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
 rolling_optimization=rolling_optimization.sort_index()
 
+dates_end=rolling_optimization.index
 tracking={}
 portfolio={}
-investment_amount=1
+investment_amount=100
 initial_amount=investment_amount
-perf=dataframe.pct_change(fill_method=None)
 transaction_fee=0.005
-gold_limit=0.05
-weight_dict={col: 1/returns_to_use.shape[1] for col in returns_to_use.columns}
+perf=dataframe.pct_change(fill_method=None)
 
-
-for i in range(len(dates_end)-1):
+for i in range(len(dates_end)):
     
     print(dates_end[i],investment_amount,investment_amount/initial_amount)
 
-    
-    temp=dataframe.loc[dates_end[i]:dates_end[i+1]].copy()
+
+    if i<len(dates_end)-1:
+        temp=dataframe.loc[dates_end[i]:dates_end[i+1]].copy()
+    else:
+        temp=dataframe.loc[dates_end[-1]:].copy()
+        
     initial_price=temp.iloc[0].to_dict()
 
-    if dates_end[i]>dates_end[0]:
+    # if dates_end[i]>dates_end[0]:
 
-        weight_at_date_dict=rolling_optimization.loc[dates_end[i]].to_dict()
-        weight_dict={}
+    weight_at_date_dict=rolling_optimization.loc[dates_end[i]].to_dict()
+    weight_dict={}
+    for key in temp.columns:
 
-        for key in temp.columns:
-
-            if key in weight_at_date_dict: 
-                weight_dict[key]=weight_at_date_dict[key]
-            else:
-                weight_dict[key]=0
+        if key in weight_at_date_dict: 
+            weight_dict[key]=weight_at_date_dict[key]
+        else:
+            weight_dict[key]=0
 
                 
     weight_vec=np.array(list(weight_dict.values()))
@@ -223,7 +224,7 @@ for i in range(len(dates_end)-1):
     investment_amount=temp.iloc[-1].sum()
     
 
-temp=dataframe.loc[dates_end[-2]:]*shares
+temp=dataframe.loc[dates_end[-1]:]*shares
 portfolio[dates_end[-1]]=temp
 
 st.subheader("Portfolio Composition")
