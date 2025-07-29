@@ -166,59 +166,59 @@ def rebalanced_book_cost(data,quantities,investment_amount=100):
 
     return cost    
 
-def rebalanced_dynamic_quantities(data,weight_matrix,investment_amount=100,transaction_fee=0.0):
+def rebalanced_dynamic_quantities(data,matrix,frequency='Quarterly',investment_amount=100,transaction_fee=0.0):
     
-    dates_end=weight_matrix.index
-    tracking={}
-    portfolio={}
-    quantities={}
-    initial_amount=investment_amount
-    perf=data.pct_change(fill_method=None)
-    
-    for i in range(len(dates_end)):
-        
-        print(dates_end[i],investment_amount,investment_amount/initial_amount)
-    
-    
-        if i<len(dates_end)-1:
-            temp=data.loc[dates_end[i]:dates_end[i+1]].copy()
-        else:
-            temp=data.loc[dates_end[-1]:].copy()
-            
-        initial_price=temp.iloc[0].to_dict()
-    
-        # if dates_end[i]>dates_end[0]:
-    
-        weight_at_date_dict=weight_matrix.loc[dates_end[i]].to_dict()
-        weight_dict={}
-        for key in temp.columns:
-    
-            if key in weight_at_date_dict: 
-                weight_dict[key]=weight_at_date_dict[key]
-            else:
-                weight_dict[key]=0
-    
-                    
-        weight_vec=np.array(list(weight_dict.values()))
-        
-        inital_investment_per_stock={}
-        shares={}
-    
-        for col in temp.columns:
-            
-            weighted_perf=weight_vec*perf.loc[dates_end[i]]
-            
-            inital_investment_per_stock[col]=weight_dict[col]*investment_amount*(1+weighted_perf.sum())
-            shares[col]=inital_investment_per_stock[col]*(1-transaction_fee)/initial_price[col]
-    
-        tracking[dates_end[i]]=(weight_dict,shares,investment_amount,initial_price)
-        quantities[dates_end[i]]=shares
-        temp=temp*shares    
-        portfolio[dates_end[i]]=temp
-        investment_amount=temp.iloc[-1].sum()
-        
-    
-    temp=data.loc[dates_end[-1]:]*shares
-    portfolio[dates_end[-1]]=temp
+    investment_amount=100
+    weights=matrix.iloc[0].values
+    perf=data.pct_change()
+    prices_dict=data.T.to_dict()
 
-    return portfolio, tracking,quantities
+    
+    dates=sorted(list(prices_dict.keys()))    
+
+    rebalancing_dates=get_rebalancing_dates(data,frequency=frequency)
+
+    weights=dict(zip((data.columns),weights))
+
+    shares={}
+    portfolio={}
+
+    for key in weights:
+
+        shares[key]=weights[key]*investment_amount*(1-transaction_fee)/prices_dict[dates[0]][key]
+
+    portfolio[dates[0]]=shares
+
+    i=0
+    for j in range(len(dates)-1):
+
+
+        if dates[j+1]>rebalancing_dates[i]:
+
+            updated_allocation=matrix2.loc[rebalancing_dates[i]].values
+            weights=dict(zip((data.columns),updated_allocation))
+
+            shares={}
+
+            prices=prices_dict[dates[j]]
+            investment_amount=0
+            perf_w=0
+
+            for key in weights:
+
+                investment_amount+=portfolio[dates[j]][key]*prices[key]
+
+            for key in weights:
+                shares[key]=investment_amount*weights[key]*(1-transaction_fee)/prices[key]
+
+            i=i+1
+        else:
+
+            shares=portfolio[dates[j]]
+
+
+        portfolio[dates[j+1]]=shares
+
+    quantities=pd.DataFrame(portfolio).T
+    
+    return quantities
