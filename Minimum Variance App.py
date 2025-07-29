@@ -213,8 +213,9 @@ st.dataframe(weights)
 st.header("Yearly Metrics")
 
 performance=pd.DataFrame()
-results=(rebalanced_dynamic_quantities(dataframe,rolling_optimization)*dataframe).sum(axis=1)
-performance['Fund']=results
+quantities=rebalanced_dynamic_quantities(dataframe,rolling_optimization)
+fund=(quantities*dataframe).sum(axis=1)
+performance['Fund']=fund
 performance['Bitcoin']=dataframe['BTCUSDT']
 #performance['Mantra']=dataframe['OMUSDT']
 
@@ -223,7 +224,9 @@ performance_pct=performance_pct.pct_change(fill_method=None)
 
 # ((1+performance_pct).cumprod()*100)
 st.dataframe(performance)
-
+st.dataframe(fund)
+st.dataframe(dataframe)
+st.dataframe(quantities)
 
 years=sorted(list(set(performance.index.year)))
 month_year=performance.index.strftime('%Y-%m')
