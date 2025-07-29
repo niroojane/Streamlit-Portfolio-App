@@ -236,8 +236,9 @@ if uploaded_file:
     
         tracking_error_daily=pd.DataFrame(tracking_error_daily.values(),index=tracking_error_daily.keys(),columns=['Tracking Error (daily)'])
         tracking_error_monthly=pd.DataFrame(tracking_error_monthly.values(),index=tracking_error_monthly.keys(),columns=['Tracking Error (Monthly)'])
-    
-        dates_drawdown=((portfolio_returns-portfolio_returns.cummax())/portfolio_returns.cummax()).idxmin().dt.date
+        
+        ptf_drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()))
+        dates_drawdown=ptf_drawdown.idxmin().dt.date
         
         vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
         monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
@@ -260,6 +261,10 @@ if uploaded_file:
         
         fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
         st.plotly_chart(fig)
+
+        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown")
+        st.plotly_chart(fig2)
+        
         st.write(portfolio_returns)
 
 
