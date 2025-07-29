@@ -17,8 +17,7 @@ import plotly.graph_objects as go
 from RiskMetrics import RiskAnalysis,create_constraint,diversification_constraint
 from Price_Endpoint import *
 from Stock_Data import get_close
-
-
+from Rebalancing import *
 
 selected_number = st.slider(
     "Number of Crypto:",
@@ -173,59 +172,7 @@ rolling_optimization=pd.DataFrame(results,index=dataframe.columns).T
 rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
 rolling_optimization=rolling_optimization.sort_index()
 
-dates_end=rolling_optimization.index
-tracking={}
-portfolio={}
-investment_amount=100
-initial_amount=investment_amount
-transaction_fee=0.005
-perf=dataframe.pct_change(fill_method=None)
 
-for i in range(len(dates_end)):
-    
-    print(dates_end[i],investment_amount,investment_amount/initial_amount)
-
-
-    if i<len(dates_end)-1:
-        temp=dataframe.loc[dates_end[i]:dates_end[i+1]].copy()
-    else:
-        temp=dataframe.loc[dates_end[-1]:].copy()
-        
-    initial_price=temp.iloc[0].to_dict()
-
-    # if dates_end[i]>dates_end[0]:
-
-    weight_at_date_dict=rolling_optimization.loc[dates_end[i]].to_dict()
-    weight_dict={}
-    for key in temp.columns:
-
-        if key in weight_at_date_dict: 
-            weight_dict[key]=weight_at_date_dict[key]
-        else:
-            weight_dict[key]=0
-
-                
-    weight_vec=np.array(list(weight_dict.values()))
-    
-    inital_investment_per_stock={}
-    shares={}
-
-    for col in temp.columns:
-        
-        weighted_perf=weight_vec*perf.loc[dates_end[i]]
-        
-        inital_investment_per_stock[col]=weight_dict[col]*investment_amount*(1+weighted_perf.sum())
-        shares[col]=inital_investment_per_stock[col]*(1-transaction_fee)/initial_price[col]
-
-    tracking[dates_end[i]]=(weight_dict,shares,investment_amount,initial_price)
-
-    temp=temp*shares    
-    portfolio[dates_end[i]]=temp
-    investment_amount=temp.iloc[-1].sum()
-    
-
-temp=dataframe.loc[dates_end[-1]:]*shares
-portfolio[dates_end[-1]]=temp
 
 st.subheader("Portfolio Composition")
 
@@ -265,18 +212,15 @@ st.dataframe(weights)
 
 st.header("Yearly Metrics")
 
-historical_portfolio=pd.DataFrame()
-performance=pd.DataFrame()
-for key in portfolio.keys():
-    historical_portfolio=historical_portfolio.combine_first(portfolio[key])
-
-
+results=(rebalanced_dynamic_quantities(dataframe,rolling_optimization)*dataframe).sum(axis=1)
 performance['Fund']=historical_portfolio.sum(axis=1)
 performance['Bitcoin']=dataframe['BTCUSDT']
 #performance['Mantra']=dataframe['OMUSDT']
-performance=performance.dropna()
+
 performance_pct=performance.copy()
-performance_pct=performance_pct.pct_change()
+performance_pct=performance_pct.pct_change(fill_method=None)
+
+((1+performance_pct).cumprod()*100)
 
 
 
