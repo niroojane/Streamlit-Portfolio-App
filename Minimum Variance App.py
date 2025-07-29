@@ -181,8 +181,8 @@ dates_options=sorted(dates_end[:-1],reverse=True)
 
 selected_date = st.selectbox("Weights history:", dates_options,index=1)
 
-last_weights=tracking[selected_date][0]
-weights=pd.DataFrame(last_weights.values(),index=last_weights.keys(),columns=[selected_date])
+last_weights=rolling_optimization.loc[selected_date]
+weights=pd.DataFrame(last_weights).T
 st.dataframe(weights)
 
 # last_weights=tracking[dates_end[-3]][0]
