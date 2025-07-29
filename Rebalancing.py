@@ -166,7 +166,7 @@ def rebalanced_book_cost(data,quantities,investment_amount=100):
 
     return cost    
 
-def rebalanced_dynamic_quantities(data,matrix,frequency='Quarterly',investment_amount=100,transaction_fee=0.0):
+def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_fee=0.0):
     
     investment_amount=100
     weights=matrix.iloc[0].values
@@ -176,7 +176,7 @@ def rebalanced_dynamic_quantities(data,matrix,frequency='Quarterly',investment_a
     
     dates=sorted(list(prices_dict.keys()))    
 
-    rebalancing_dates=get_rebalancing_dates(data,frequency=frequency)
+    rebalancing_dates=matrix.index
 
     weights=dict(zip((data.columns),weights))
 
@@ -195,7 +195,7 @@ def rebalanced_dynamic_quantities(data,matrix,frequency='Quarterly',investment_a
 
         if dates[j+1]>rebalancing_dates[i]:
 
-            updated_allocation=matrix2.loc[rebalancing_dates[i]].values
+            updated_allocation=matrix.loc[rebalancing_dates[i]].values
             weights=dict(zip((data.columns),updated_allocation))
 
             shares={}
