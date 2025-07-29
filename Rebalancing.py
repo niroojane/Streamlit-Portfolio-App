@@ -167,6 +167,7 @@ def rebalanced_book_cost(data,quantities,investment_amount=100):
 
     return cost
 
+
 def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_fee=0.0):
     
     investment_amount=100
@@ -190,38 +191,36 @@ def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_
 
     portfolio[dates[0]]=shares
 
-    i=0
-    for j in range(len(dates)-1):
-
-
-        if i < len(rebalancing_dates) and dates[j+1]>rebalancing_dates[i]:
-
-            updated_allocation=matrix.loc[rebalancing_dates[i]].values
-            weights=dict(zip((data.columns),updated_allocation))
-
-            shares={}
-
-            prices=prices_dict[dates[j]]
-            investment_amount=0
-            perf_w=0
-
+    i = 0
+    for j in range(len(dates) - 1):
+    
+        if i < len(rebalancing_dates) and dates[j + 1] > rebalancing_dates[i]:
+    
+            updated_allocation = matrix.loc[rebalancing_dates[i]].values
+            weights = dict(zip(data.columns, updated_allocation))
+    
+            shares = {}
+    
+            prices = prices_dict[dates[j]]
+            investment_amount = 0
+    
             for key in weights:
-
-                investment_amount+=portfolio[dates[j]][key]*prices[key]
-
+                investment_amount += portfolio[dates[j]][key] * prices[key]
+    
             for key in weights:
-                shares[key]=investment_amount*weights[key]*(1-transaction_fee)/prices[key]
-
-            i=i+1
+                shares[key] = investment_amount * weights[key] * (1 - transaction_fee) / prices[key]
+    
+            i += 1
+    
         else:
+            shares = portfolio[dates[j]]
+    
+        portfolio[dates[j + 1]] = shares
+        
+    quantities = pd.DataFrame(portfolio).T
 
-            shares=portfolio[dates[j]]
-
-
-        portfolio[dates[j+1]]=shares
-
-    quantities=pd.DataFrame(portfolio).T
     
     return quantities
+
 
     
