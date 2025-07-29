@@ -58,7 +58,7 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
     scope_prices = scope_prices[~scope_prices.index.duplicated(keep='first')]
     scope_prices.index=pd.to_datetime(scope_prices.index)
 
-    trx=get_close(['TRX-USD'],start=start_date.strftime("%Y-%m-%d"),end=today.strftime("%Y-%m-%d"))
+    trx=get_close(['TRX-USD'],start=(start_date-datetime.timedelta(1)).strftime("%Y-%m-%d"),end=today.strftime("%Y-%m-%d"))
     trx.index=pd.to_datetime(trx.index)
     trx = trx[~trx.index.duplicated(keep='first')]
     trx=trx.sort_index().dropna()
