@@ -182,7 +182,7 @@ dates_options=sorted(dates_end[:-1],reverse=True)
 selected_date = st.selectbox("Weights history:", dates_options,index=1)
 
 last_weights=rolling_optimization.loc[selected_date]
-weights=pd.DataFrame(last_weights).T
+weights=pd.DataFrame(last_weights)
 st.dataframe(weights)
 
 # last_weights=tracking[dates_end[-3]][0]
@@ -213,7 +213,7 @@ st.dataframe(weights)
 st.header("Yearly Metrics")
 
 results=(rebalanced_dynamic_quantities(dataframe,rolling_optimization)*dataframe).sum(axis=1)
-performance['Fund']=historical_portfolio.sum(axis=1)
+performance['Fund']=results
 performance['Bitcoin']=dataframe['BTCUSDT']
 #performance['Mantra']=dataframe['OMUSDT']
 
