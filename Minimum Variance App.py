@@ -221,8 +221,8 @@ performance['Bitcoin']=dataframe['BTCUSDT']
 performance_pct=performance.copy()
 performance_pct=performance_pct.pct_change(fill_method=None)
 
-((1+performance_pct).cumprod()*100)
-
+# ((1+performance_pct).cumprod()*100)
+st.dataframe(performance)
 
 
 years=sorted(list(set(performance.index.year)))
