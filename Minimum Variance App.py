@@ -212,6 +212,7 @@ st.dataframe(weights)
 
 st.header("Yearly Metrics")
 
+performance=pd.DataFrame()
 results=(rebalanced_dynamic_quantities(dataframe,rolling_optimization)*dataframe).sum(axis=1)
 performance['Fund']=results
 performance['Bitcoin']=dataframe['BTCUSDT']
