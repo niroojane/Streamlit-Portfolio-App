@@ -84,8 +84,6 @@ st.subheader("Constraints")
 
 dataframe,returns_to_use=load_data(tickers=selected,start_date=dt)
 
-st.dataframe(dataframe)
-
 data = pd.DataFrame({'Asset':[None],
 'Sign':[None],
 'Limit':[None]
@@ -220,16 +218,10 @@ quantities=rebalanced_dynamic_quantities(dataframe,rolling_optimization)
 fund=(quantities*dataframe).sum(axis=1)
 performance['Fund']=fund
 performance['Bitcoin']=dataframe['BTCUSDT']
-#performance['Mantra']=dataframe['OMUSDT']
 
 performance_pct=performance.copy()
 performance_pct=performance_pct.pct_change(fill_method=None)
 
-# ((1+performance_pct).cumprod()*100)
-st.dataframe(performance)
-st.dataframe(fund)
-st.dataframe(dataframe)
-st.dataframe(quantities)
 
 years=sorted(list(set(performance.index.year)))
 month_year=performance.index.strftime('%Y-%m')
