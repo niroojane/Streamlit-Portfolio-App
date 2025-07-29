@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Niroojane Selvam
+# Copyright (c) 2025 [Niroojane Selvam]
 # Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
 
@@ -38,10 +38,11 @@ def get_rebalancing_dates(data,frequency='Quarterly'):
     dates_end.insert(0,data.index[0])
     # dates_end.append(data.index[-1])
     dates_end=sorted(list(set(dates_end)))
+    
     rebalancing_dates=sorted(list(dates_end))
     
     return rebalancing_dates
-    
+
 def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency='Quarterly'):
 
     perf=data.pct_change()
@@ -164,7 +165,7 @@ def rebalanced_book_cost(data,quantities,investment_amount=100):
     
     cost = pd.DataFrame(amount_traded, index=data.index, columns=data.columns)
 
-    return cost    
+    return cost
 
 def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_fee=0.0):
     
@@ -222,3 +223,5 @@ def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_
     quantities=pd.DataFrame(portfolio).T
     
     return quantities
+
+    
