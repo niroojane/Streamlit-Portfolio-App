@@ -170,6 +170,7 @@ def rebalanced_dynamic_quantities(data,weight_matrix,investment_amount=100,trans
     tracking={}
     portfolio={}
     quantities={}
+    initial_amount=investment_amount
     perf=data.pct_change(fill_method=None)
     
     for i in range(len(dates_end)):
