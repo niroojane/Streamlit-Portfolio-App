@@ -193,7 +193,7 @@ def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_
     for j in range(len(dates)-1):
 
 
-        if dates[j+1]>rebalancing_dates[i]:
+        if i < len(rebalancing_dates) and dates[j+1]>rebalancing_dates[i]:
 
             updated_allocation=matrix.loc[rebalancing_dates[i]].values
             weights=dict(zip((data.columns),updated_allocation))
