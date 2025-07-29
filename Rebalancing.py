@@ -33,13 +33,16 @@ def get_rebalancing_dates(data,frequency='Quarterly'):
     idx2 = pd.Index(month)
     
     closest_dates = idx1[idx1.get_indexer(idx2, method='nearest')]
-    closest_dates=list(closest_dates)
-    closest_dates=sorted(closest_dates)
     
-    rebalancing_dates=sorted(list(closest_dates))
+    dates_end=list(closest_dates)
+    dates_end.insert(0,data.index[0])
+    dates_end.append(data.index[-1])
+    dates_end=sorted(list(set(dates_end)))
+    
+    rebalancing_dates=sorted(list(dates_end))
     
     return rebalancing_dates
-
+    
 def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency='Quarterly'):
 
     perf=data.pct_change()
