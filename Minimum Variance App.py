@@ -170,7 +170,7 @@ for i in range(len(dates_end)-1):
     results[date]=np.round(optimal,6)
 
 rolling_optimization=pd.DataFrame(results,index=dataframe.columns).T
-rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
+# rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
 rolling_optimization=rolling_optimization.sort_index()
 
 
@@ -214,8 +214,8 @@ st.dataframe(weights)
 st.header("Yearly Metrics")
 
 performance=pd.DataFrame()
-quantities=rebalanced_dynamic_quantities(dataframe,rolling_optimization)
-fund=(quantities*dataframe).sum(axis=1)
+quantities=rebalanced_dynamic_quantities(dataframe.loc[dates_end[1]:],rolling_optimization)
+fund=(quantities*dataframe.loc[dates_end[1]:]).sum(axis=1)
 performance['Fund']=fund
 performance['Bitcoin']=dataframe['BTCUSDT']
 
