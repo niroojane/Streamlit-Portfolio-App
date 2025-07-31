@@ -306,10 +306,14 @@ st.dataframe(indicators)
 st.subheader("Portfolio Value Evolution")
 
 max_value = performance_pct.index.max().strftime('%Y-%m-%d')
-min_value = (rolling_optimization.index[1]+datetime.timedelta(1)).strftime('%Y-%m-%d')
+min_value = performance_pct.index.min().strftime('%Y-%m-%d')
+starting_min_value = (rolling_optimization.index[1]+datetime.timedelta(1)).strftime('%Y-%m-%d')
+
 max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
 min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
-value=(min_value,max_value)
+starting_min_value=datetime.datetime.strptime(starting_min_value, '%Y-%m-%d')
+
+value=(starting_min_value,max_value)
 
 Model = st.slider(
     'Date:',
