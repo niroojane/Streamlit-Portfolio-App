@@ -220,7 +220,7 @@ performance['Fund']=fund
 performance['Bitcoin']=dataframe['BTCUSDT']
 
 performance_pct=performance.copy()
-performance_pct=performance_pct.pct_change(fill_method=None).dropna()
+performance_pct=performance_pct.pct_change(fill_method=None)
 
 
 years=sorted(list(set(performance.index.year)))
@@ -306,7 +306,7 @@ st.dataframe(indicators)
 st.subheader("Portfolio Value Evolution")
 
 max_value = performance_pct.index.max().strftime('%Y-%m-%d')
-min_value = performance_pct.index.min().strftime('%Y-%m-%d')
+min_value = performance_pct.index[1].strftime('%Y-%m-%d')
 max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
 min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
 value=(min_value,max_value)
