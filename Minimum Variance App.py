@@ -220,7 +220,7 @@ performance['Fund']=fund
 performance['Bitcoin']=dataframe['BTCUSDT']
 
 performance_pct=performance.copy()
-performance_pct=performance_pct.pct_change(fill_method=None)
+performance_pct=performance_pct.pct_change(fill_method=None).dropna()
 
 
 years=sorted(list(set(performance.index.year)))
@@ -332,7 +332,7 @@ portfolio_returns=(1+performance_pct.loc[mask]).cumprod()*100
 
 fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
 st.plotly_chart(fig)
-st.dataframe((1+performance_pct.loc[mask].dropna()).cumprod()*100)
+st.dataframe((1+performance_pct.loc[mask]).cumprod()*100)
 
 
 
