@@ -332,7 +332,7 @@ portfolio_returns=(1+performance_pct.loc[mask]).cumprod()*100
 
 fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
 st.plotly_chart(fig)
-st.dataframe((1+performance_pct.loc[mask]).cumprod()*100)
+st.dataframe((1+performance_pct.loc[mask].fillna(0)).cumprod()*100)
 
 
 
