@@ -198,7 +198,7 @@ if uploaded_file:
             
             benchmark = st.selectbox("Benchmark :", list(allocation_dict.keys()))
             frequency = st.selectbox("Rebalancing Frequency:", ['Monthly','Quarterly','Yearly'])
-            window_rolling=st.number_input("Sliding Window Size:",min_value=0,value=30,step=int)
+            window_rolling=st.number_input("Sliding Window Size:",min_value=0,value=30,step=1)
         
         portfolio_returns=pd.DataFrame()
     
