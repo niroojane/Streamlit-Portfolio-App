@@ -198,7 +198,8 @@ if uploaded_file:
             
             benchmark = st.selectbox("Benchmark :", list(allocation_dict.keys()))
             frequency = st.selectbox("Rebalancing Frequency:", ['Monthly','Quarterly','Yearly'])
-    
+            window_rolling=st.number_input("Sliding Window Size:",min_value=0,value=30,step=int)
+        
         portfolio_returns=pd.DataFrame()
     
         
@@ -242,7 +243,10 @@ if uploaded_file:
         
         vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
         monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
-    
+        
+        rolling_vol=portfolio_returns.rolling(window_rolling).std()*np.sqrt(260)
+        
+        
         drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
         Q=0.05
         intervals=np.arange(Q, 1, 0.0005, dtype=float)
@@ -264,6 +268,9 @@ if uploaded_file:
 
         fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown")
         st.plotly_chart(fig2)
+
+        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility")
+        st.plotly_chart(fig3)
         
         st.write(portfolio_returns)
 
