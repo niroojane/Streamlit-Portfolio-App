@@ -242,6 +242,7 @@ def rebalanced_metrics():
 
 def get_portfolio_risk():
 
+    
     allocation_dict={}
         
     for idx in allocation_df.index:
@@ -266,7 +267,7 @@ def get_portfolio_risk():
     
     vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
     monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
-
+    
     drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
     Q=0.05
     intervals=np.arange(Q, 1, 0.0005, dtype=float)
@@ -280,10 +281,11 @@ def get_portfolio_risk():
     
     return risk.T.reset_index().rename(columns={'index': 'Indicators'}).round(4)
 
-def get_portfolio_evolution(frequency):
+def get_portfolio_evolution(frequency,window=30):
     
     rebalanced_time_series(frequency=frequency)
     ptf_drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()))
+    rolling_window_vol=portfolio_returns.pct_change().rolling(window).std()*np.sqrt(260)
 
     fig = px.line(portfolio_returns, title="Portfolio Value Evolution",color_discrete_sequence = px.colors.sequential.Sunsetdark,render_mode='svg')
     fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
@@ -293,7 +295,11 @@ def get_portfolio_evolution(frequency):
     fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
     fig2.update_traces(textfont=dict(family="Arial Narrow"))
 
-    return get_expected_metrics(),rebalanced_metrics(),get_portfolio_risk(),fig,fig2,portfolio_returns.reset_index().rename(columns={'index': 'Portfolio Returns'}).round(4)
+    fig3=px.line(rolling_window_vol, title="Portfolio Rolling Volatility",color_discrete_sequence = px.colors.sequential.Sunsetdark,render_mode='svg')
+    fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
+    fig3.update_traces(textfont=dict(family="Arial Narrow"))
+
+    return get_expected_metrics(),rebalanced_metrics(),get_portfolio_risk(),fig,fig2,fig3,portfolio_returns.reset_index().rename(columns={'index': 'Portfolio Returns'}).round(4)
 
 
 
@@ -511,6 +517,7 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
 
             
             dropdown = gr.Dropdown(choices=[], label="Select Benchmark")
+            rolling_window=gr.Number(value=30,label="Select Window for Rolling Volatility")
             
 
             add_button.click(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
@@ -518,7 +525,9 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             new_allocation_input.submit(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
             
             output = gr.Textbox(visible=False)
+            output_window = gr.Textbox(visible=False)
             load_button = gr.Button("Load List",visible=False)
+            
         
             load_button.click(fn=load_choices, outputs=dropdown)
         
@@ -526,9 +535,16 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
                 global benchmark
                 benchmark=choice
                 return f"You selected: {benchmark}"
+
+
+            def show_number(choice):
+                global window
+                window=choice
+                return f"You selected: {window}"
             
             dropdown.change(fn=show_selection, inputs=dropdown, outputs=output)
-
+            
+            rolling_window.change(fn=show_number, inputs=rolling_window, outputs=output_window)
         
 
             gr.Markdown("# Portfolio Metrics")
@@ -541,12 +557,14 @@ with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
             risk_table = gr.DataFrame(label="Portfolio Risk")
             time_series_plot = gr.Plot(label="Portfolio Evolution")
             Drawdown_plot = gr.Plot(label="Portfolio Drawdown")
+            Rolling_Vol_plot = gr.Plot(label="Portfolio Rolling Volatility")
+            
             time_series_data = gr.DataFrame(label="Portfolio Time Series")
     
             get_metrics_button.click(
                 fn=get_portfolio_evolution,
-                inputs=[rebalancing_frequency],
-                outputs=[metrics_table, returns_table, risk_table, time_series_plot,Drawdown_plot, time_series_data])
+                inputs=[rebalancing_frequency,rolling_window],
+                outputs=[metrics_table, returns_table, risk_table, time_series_plot,Drawdown_plot,Rolling_Vol_plot,time_series_data])
 
 
             file_name=gr.Textbox(label="File Name")
