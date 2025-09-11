@@ -244,7 +244,7 @@ if uploaded_file:
         vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
         monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
         
-        rolling_vol=portfolio_returns.rolling(window_rolling).std()*np.sqrt(260)
+        rolling_vol=portfolio_returns.rolling(window_rolling).pct_change().std()*np.sqrt(260)
         
         
         drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
