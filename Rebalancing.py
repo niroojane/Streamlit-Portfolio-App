@@ -167,30 +167,28 @@ def rebalanced_book_cost(data,quantities,investment_amount=100):
 
     return cost
 
-
 def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_fee=0.0):
     
+    transaction_fee=0.0
     investment_amount=100
     weights=matrix.iloc[0].values
     perf=data.pct_change()
-    prices_dict=data.T.to_dict()
-
     
-    dates=sorted(list(prices_dict.keys()))    
-
+    dates=sorted(list(data.index))    
+    
     rebalancing_dates=matrix.index
-
+    
     weights=dict(zip((data.columns),weights))
-
+    
     shares={}
     portfolio={}
-
+    
     for key in weights:
-
-        shares[key]=weights[key]*investment_amount*(1-transaction_fee)/prices_dict[dates[0]][key]
-
+    
+        shares[key]=weights[key]*investment_amount*(1-transaction_fee)/data.loc[dates[0]][key]
+    
     portfolio[dates[0]]=shares
-
+    
     i = 0
     for j in range(len(dates) - 1):
     
@@ -201,7 +199,7 @@ def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_
     
             shares = {}
     
-            prices = prices_dict[dates[j]]
+            prices = data.loc[dates[j]]
             investment_amount = 0
     
             for key in weights:
