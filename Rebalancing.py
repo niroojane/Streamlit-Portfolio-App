@@ -48,7 +48,7 @@ def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency
     perf=data.pct_change()
 
 
-    dates=sorted(list(prices_dict.keys()))    
+    dates=sorted(list(data.index))    
     
     rebalancing_dates=get_rebalancing_dates(data,frequency=frequency)
     
