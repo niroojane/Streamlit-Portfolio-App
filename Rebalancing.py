@@ -46,8 +46,6 @@ def get_rebalancing_dates(data,frequency='Quarterly'):
 def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency='Quarterly'):
 
     perf=data.pct_change()
-    prices_dict=data.T.to_dict()
-    #perf_dict=perf.T.to_dict()
 
 
     dates=sorted(list(prices_dict.keys()))    
@@ -62,7 +60,7 @@ def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency
 
     for key in weights:
         
-        shares[key]=weights[key]*investment_amount/prices_dict[dates[0]][key]
+        shares[key]=weights[key]*investment_amount/data.loc[dates[0]][key]
     
     portfolio[dates[0]]=shares
     
@@ -74,7 +72,7 @@ def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency
             
             shares={}
             
-            prices=prices_dict[dates[j]]
+            prices=data.loc[dates[j]]
             investment_amount=0
             perf_w=0
             
