@@ -274,13 +274,13 @@ if uploaded_file:
         st.subheader("Portfolio Value Evolution")
     
         
-        fig = px.line(portfolio_returns, title="Portfolio Value Evolution").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        fig = px.line(portfolio_returns, title="Portfolio Value Evolution",color="line",color_discrete_sequence=px.colors.sequential.Oranges).update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig)
 
-        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown",color="line",color_discrete_sequence=px.colors.sequential.Oranges).update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig2)
 
-        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility",color="line",color_discrete_sequence=px.colors.sequential.Oranges).update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig3)
         
         st.write(portfolio_returns)
