@@ -13,7 +13,7 @@ from scipy.stats import norm, chi2,gumbel_l
 import datetime
 
 from RiskMetrics import Portfolio, RiskAnalysis,create_constraint,diversification_constraint
-from Rebalancing import rebalanced_portfolio, buy_and_hold
+from Rebalancing import *
 
 st.title("Portfolio Optimization App")
 
@@ -139,6 +139,8 @@ if uploaded_file:
             pass
 
         optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
+        minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
+        risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
 
 
         st.subheader("Optimized Weights")
@@ -146,9 +148,18 @@ if uploaded_file:
         allocation={}
 
         optimized_weights = portfolio.optimize(objective="sharpe_ratio")
+        minvar_weights = portfolio.optimize(objective="minimum_variance")
+        risk_parity_weights = portfolio.optimize(objective="risk_parity")
+
         
         allocation['Optimal Portfolio']=optimized_weights.tolist()
         allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
+
+        allocation['Minimum Variance Portfolio']=minvar_weights.tolist()
+        allocation['Minimum Variance Constrained Portfolio']=minvar_weights_constraint.tolist()
+
+        allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
+        allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
         
         allocation_dataframe=pd.DataFrame(allocation,index=returns.columns).T.round(6)
         
@@ -263,13 +274,13 @@ if uploaded_file:
         st.subheader("Portfolio Value Evolution")
     
         
-        fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
+        fig = px.line(portfolio_returns, title="Portfolio Value Evolution").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig)
 
-        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown")
+        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig2)
 
-        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility")
+        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig3)
         
         st.write(portfolio_returns)
@@ -350,27 +361,51 @@ if uploaded_file:
             pass
 
         optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
+        minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
+        risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
+        
         optimized_weights = portfolio.optimize(objective="sharpe_ratio")
+        minvar_weights = portfolio.optimize(objective="minimum_variance")
+        risk_parity_weights = portfolio.optimize(objective="risk_parity")
 
         optimal_results={}
 
         optimal_results['Current Optimal Portfolio']=optimized_weights.tolist()
         optimal_results['Current Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
-    
+        optimal_results['Current Minimum Variance Portfolio']=minvar_weights.tolist()
+        optimal_results['Current Minimum Variance Constrained Portfolio']=minvar_weights_constraint
+        optimal_results['Current Risk Parity Portfolio']=risk_parity_weights.tolist()
+        optimal_results['Current Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
+
+
+
+        former_results={}
+        
         for idx in allocation_dataframe.index:
-            optimal_results[idx]=allocation_dict[idx].tolist()
+            former_results[idx]=allocation_dict[idx].tolist()
 
         for idx in initial_allocation.index:
-            optimal_results[idx]=allocation_dict[idx].tolist()
+            former_results[idx]=allocation_dict[idx].tolist()
 
 
-        optimal_results=pd.DataFrame(optimal_results,index=prices.columns).T.round(6)
-        editable_weights = st.data_editor(optimal_results, num_rows="dynamic")
+        former_results=pd.DataFrame(former_results,index=prices.columns).T.round(6)
 
-        weight_matrix={}
+        st.subheader("Results since Inception")
+
+        editable_weights = st.data_editor(former_results, num_rows="dynamic")
         
-        for idx in editable_weights.index:
-            weight_matrix[idx]=editable_weights.loc[idx].to_numpy()
+        current_results={}
+
+        current_results=pd.DataFrame(optimal_results,index=prices.columns).T.round(6)
+
+        st.subheader("Results with current timeframe")
+        
+        current_results=st.data_editor(current_results, num_rows="dynamic")
+        weight_matrix={}
+        variance_contrib=pd.DataFrame()
+        
+        for idx in current_results.index:
+            weight_matrix[idx]=current_results.loc[idx].to_numpy()
 
         metrics={}
         metrics['Returns']={}
@@ -382,10 +417,14 @@ if uploaded_file:
             metrics['Returns'][key]=(np.round(portfolio.performance(weight_matrix[key]), 4))
             metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
             metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
-        
+            temp=pd.DataFrame(portfolio.var_contrib_pct(weight_matrix[key])['Variance Contribution in %'])
+            temp.columns=[key]
+            variance_contrib=pd.concat([variance_contrib,temp],axis=1)
 
         @st.cache_data
 
+
+        
         def get_frontier(returns):
             portfolio_class=RiskAnalysis(returns)
             return portfolio_class.efficient_frontier()
@@ -425,7 +464,43 @@ if uploaded_file:
 
         indicators = pd.DataFrame(metrics,index=weight_matrix.keys())
 
+
+        st.subheader("Expected Return")
+        
         st.dataframe(indicators.T)
+        
+        st.subheader("Risk Reward Decomposition")
+        
+        # st.dataframe(variance_contrib.fillna(0.0000))
+    
+        funds_options=list(weight_matrix.keys())
+        selected_fund= st.selectbox("Fund:", funds_options,index=1)
+        selected_weights=weight_matrix[selected_fund]
+        
+        decomposition=pd.DataFrame(portfolio.var_contrib_pct(selected_weights))
+        
+        
+        quantities_rebalanced=rebalanced_portfolio(prices,selected_weights,frequency=frequency)/prices
+        quantities_buy_hold=buy_and_hold(prices,selected_weights)/prices
+        
+        cost_rebalanced=rebalanced_book_cost(prices,quantities_rebalanced)
+        cost_buy_and_hold=rebalanced_book_cost(prices,quantities_buy_hold)
+        
+        mtm_rebalanced=quantities_rebalanced*prices
+        mtm_buy_and_hold=quantities_buy_hold*prices
+
+        pnl_buy_and_hold=pd.DataFrame((mtm_buy_and_hold-cost_buy_and_hold).iloc[-1])
+        pnl_buy_and_hold.columns=['Profit and Loss (Buy and Hold)']
+        
+        pnl_rebalanced=pd.DataFrame((mtm_rebalanced-cost_rebalanced).iloc[-1])
+        pnl_rebalanced.columns=['Profit and Loss (Rebalanced)']
+
+
+        pnl=pd.concat([pnl_buy_and_hold,pnl_rebalanced,decomposition],axis=1)
+        pnl.loc['Total']=pnl.sum(axis=0)
+        
+        st.dataframe(pnl.fillna(0))
+
 
         st.subheader("Correlation Matrix")
         
