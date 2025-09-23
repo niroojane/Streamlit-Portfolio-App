@@ -274,13 +274,36 @@ if uploaded_file:
         st.subheader("Portfolio Value Evolution")
     
         
-        fig = px.line(portfolio_returns, title="Portfolio Value Evolution",color="line",color_discrete_sequence=px.colors.sequential.Oranges).update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        def orange_line_chart(df, title):
+            return (
+                px.line(
+                    df,
+                    title=title,
+                    color="line",
+                    color_discrete_sequence=px.colors.sequential.Oranges
+                )
+                .update_traces(
+                    visible="legendonly",
+                    selector=lambda t: not t.name in [
+                        "Rebalanced Optimal Portfolio",
+                        "Buy and Hold Optimal Portfolio"
+                    ]
+                )
+                .update_layout(
+                    plot_bgcolor="#000000",  # black background
+                    paper_bgcolor="#000000",
+                    font=dict(color="#ffffff")
+                )
+            )
+        
+        # Generate all three charts
+        fig = orange_line_chart(portfolio_returns, "Portfolio Value Evolution")
         st.plotly_chart(fig)
-
-        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown",color="line",color_discrete_sequence=px.colors.sequential.Oranges).update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        
+        fig2 = orange_line_chart(ptf_drawdown, "Portfolio Drawdown")
         st.plotly_chart(fig2)
-
-        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility",color="line",color_discrete_sequence=px.colors.sequential.Oranges).update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        
+        fig3 = orange_line_chart(rolling_vol, "Portfolio Rolling Volatility")
         st.plotly_chart(fig3)
         
         st.write(portfolio_returns)
