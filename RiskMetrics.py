@@ -5,9 +5,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
-
-
 import pandas as pd
 import random
 import numpy as np
@@ -19,8 +16,6 @@ from statsmodels.stats.correlation_tools import cov_nearest
 
 
 # # General Functions
-
-# In[2]:
 
 
 def halton_sequences(number,base=2):
@@ -86,8 +81,6 @@ def near_psd(x, epsilon=0):
     return near_cov
 
 
-# In[3]:
-
 
 def performance(perf,weights):
     
@@ -95,8 +88,6 @@ def performance(perf,weights):
     
     return np.dot(perf,weights)
 
-
-# In[ ]:
 
 
 def rolling_var(returns,weights,window=30,Q=1):
@@ -176,9 +167,6 @@ def kupiec_test(rolling_var,Q=5):
     return stats
 
 
-# In[ ]:
-
-
 def create_constraint(sign,limit,position):
     
     dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
@@ -209,8 +197,6 @@ def diversification_constraint(sign,limit):
 
 
 # ## Portfolio Construction
-
-# In[2]:
 
 
 class Portfolio:
@@ -266,9 +252,23 @@ class Portfolio:
         def sharpe_ratio(weights):
             return - self.performance(weights)/self.variance(weights)
         
+        def volatility(weights):
+            volatility=np.sqrt(np.dot(weights.T,np.dot(self.returns.cov(),weights)))*np.sqrt(252)
+            return volatility
+
         def variance(weights):
-            variance=np.sqrt(np.dot(weights.T,np.dot(self.returns.cov(),weights)))*np.sqrt(252)
+            variance=np.dot(weights.T,np.dot(self.returns.cov(),weights))
             return variance
+        def risk_contrib(weights):
+            return weights * (self.returns.cov() @ weights)
+            
+        def risk_parity(weights):
+            
+            RC = risk_contrib(weights)
+            total_risk= RC.sum()
+            target = total_risk / len(weights)
+            
+            return np.sum(((RC - target)/total_risk)**2)
         
         n_assets = len(self.returns.columns)
         weight = np.array([1 / n_assets] * n_assets)
@@ -284,12 +284,15 @@ class Portfolio:
         
         if objective=='minimum_variance':
 
-            optimum_weights = sco.minimize(variance, weight, method='SLSQP', bounds=bounds, constraints=constraints)
+            optimum_weights = sco.minimize(volatility, weight, method='SLSQP', bounds=bounds, constraints=constraints)
         
         elif objective=='sharpe_ratio':
             
             optimum_weights = sco.minimize(sharpe_ratio, weight, method='SLSQP', bounds=bounds, constraints=constraints)
+
+        elif objective=='risk_parity':
             
+            optimum_weights = sco.minimize(risk_parity, weight, method='SLSQP', bounds=bounds, constraints=constraints)
         else:
             
             print("Objective function undefined")
@@ -363,8 +366,6 @@ class Portfolio:
 
 
 # ## Risk Analysis
-
-# In[6]:
 
 
 class RiskAnalysis(Portfolio):
@@ -638,14 +639,6 @@ class RiskAnalysis(Portfolio):
         
         return tracking_error
 
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
 
 
 
