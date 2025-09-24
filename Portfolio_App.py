@@ -274,15 +274,13 @@ if uploaded_file:
         st.subheader("Portfolio Value Evolution")
     
         
-        
-        # Generate all three charts
-        fig = px.line(portfolio_returns, title="Portfolio Value Evolution").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"]) 
-        st.plotly_chart(fig) 
+        fig = px.line(portfolio_returns, title="Portfolio Value Evolution").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        st.plotly_chart(fig)
 
-        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"]) 
-        st.plotly_chart(fig2) 
-        
-        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"]) 
+        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        st.plotly_chart(fig2)
+
+        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig3)
         
         st.write(portfolio_returns)
@@ -395,14 +393,20 @@ if uploaded_file:
         st.subheader("Results since Inception")
 
         editable_weights = st.data_editor(former_results, num_rows="dynamic")
-        
-        current_results={}
-
-        current_results=pd.DataFrame(optimal_results,index=prices.columns).T.round(6)
 
         st.subheader("Results with current timeframe")
+
+        current_results={}
         
-        current_results=st.data_editor(current_results, num_rows="dynamic")
+        for key in optimal_results:
+            current_results[key]=optimal_results[key]
+            
+        for idx in initial_allocation.index:
+            current_results[idx]=allocation_dict[idx].tolist()    
+
+    
+        current_results_dataframe=pd.DataFrame(current_results,index=prices.columns).T.round(6)
+        current_results=st.data_editor(current_results_dataframe, num_rows="dynamic")
         weight_matrix={}
         variance_contrib=pd.DataFrame()
         
