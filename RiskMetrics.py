@@ -16,7 +16,38 @@ from statsmodels.stats.correlation_tools import cov_nearest
 
 
 # # General Functions
-
+def variance_decomposition_ex_post(quantities,prices):
+    ptf=quantities*prices
+    weights_ptf = ptf.div(ptf.sum(axis=1), axis=0).to_numpy()
+    
+    r = prices.pct_change().fillna(0).to_numpy()
+    T = r.shape[0]
+    n = r.shape[1]
+    
+    r_mean = r.mean(axis=0)
+    r_tilde = r - r_mean
+    rp_tilde = (weights_ptf * r_tilde).sum(axis=1)
+    
+    C_mat = np.zeros((n, n))
+    for t in range(T):
+        u = weights_ptf[t] * r_tilde[t]
+        C_mat += np.outer(u, u)
+    
+    C_mat /= (T - 1)
+    
+    diag_vec = np.diag(C_mat)
+    offdiag = C_mat - np.diag(diag_vec)
+    idiosyncratic = diag_vec
+    correlation = 0.5 * offdiag.sum(axis=1)
+    allocated = idiosyncratic + correlation
+    
+    results = pd.DataFrame({
+         "Variance": allocated,
+        "Correlation": correlation,
+       "Idiosyncratic": idiosyncratic
+    }, index=prices.columns)
+    
+    return results
 
 def halton_sequences(number,base=2):
     
