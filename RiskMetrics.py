@@ -17,10 +17,10 @@ from statsmodels.stats.correlation_tools import cov_nearest
 
 # # General Functions
 def variance_decomposition_ex_post(quantities,prices):
-    ptf=quantities*prices
-    weights_ptf = ptf.div(ptf.sum(axis=1), axis=0).to_numpy()
+    ptf=(quantities*prices).dropna()
+    weights_ptf = ptf.div(ptf.sum(axis=1), axis=0).loc[ptf.index].to_numpy()
     
-    r = prices.pct_change().fillna(0).to_numpy()
+    r = prices.pct_change().fillna(0).loc[ptf.index].to_numpy()
     T = r.shape[0]
     n = r.shape[1]
     
