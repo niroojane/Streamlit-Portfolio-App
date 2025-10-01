@@ -483,7 +483,7 @@ if uploaded_file:
         selected_fund= st.selectbox("Fund:", funds_options,index=1)
         selected_weights=weight_matrix[selected_fund]
         
-        decomposition=pd.DataFrame(portfolio.var_contrib_pct(selected_weights)).sort_values(by='Profit and Loss (Rebalanced)',ascending=False)
+        decomposition=pd.DataFrame(portfolio.var_contrib_pct(selected_weights))
         
         
         quantities_rebalanced=rebalanced_portfolio(prices,selected_weights,frequency=frequency)/prices
@@ -505,7 +505,7 @@ if uploaded_file:
         pnl=pd.concat([pnl_buy_and_hold,pnl_rebalanced,decomposition],axis=1)
         pnl.loc['Total']=pnl.sum(axis=0)
         
-        st.dataframe(pnl.fillna(0))
+        st.dataframe(pnl.fillna(0).sort_values(by='Profit and Loss (Rebalanced)',ascending=False))
 
 
         st.subheader("Correlation Matrix")
