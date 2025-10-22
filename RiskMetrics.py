@@ -440,8 +440,8 @@ class RiskAnalysis(Portfolio):
         
         
     def multivariate_distribution(self,
-                    stress_factor=1.0,
-                    iterations=10000):
+                    iterations=10000,
+                    stress_factor=1.0):
         
         #Return Multivariate Distribution of a portfolio taking into account potential correlation
         
