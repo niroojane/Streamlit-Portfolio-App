@@ -532,7 +532,7 @@ class RiskAnalysis(Portfolio):
         
         num_asset=len(self.returns.columns)
         #haltons=generate_halton(iterations,num_asset,base=2)
-        randoms=np.random.normal(size=(10000,num_asset)).T
+        randoms=np.random.normal(size=(iterations,num_asset)).T
         
         # Create a stress matrix to stress the covariance matrix
         
