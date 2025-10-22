@@ -495,7 +495,7 @@ class RiskAnalysis(Portfolio):
         df=self.returns.shape[1]*self.returns.shape[1]//2+self.returns.shape[1]
         ChiSquared = np.random.chisquare(df=df, size=iterations)
 
-        randoms=np.random.normal(size=(10000,self.returns.shape[1])).T
+        randoms=np.random.normal(size=(iterations,self.returns.shape[1])).T
         corr_matrix=self.returns.corr()
         
         if type(stress_factor)==float:
