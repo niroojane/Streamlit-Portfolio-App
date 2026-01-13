@@ -283,15 +283,17 @@ class Portfolio:
         def sharpe_ratio(weights):
             return - self.performance(weights)/self.variance(weights)
         
-        def volatility(weights):
-            volatility=np.sqrt(np.dot(weights.T,np.dot(self.returns.cov(),weights)))*np.sqrt(252)
-            return volatility
-
         def variance(weights):
-            variance=np.dot(weights.T,np.dot(self.returns.cov(),weights))
-            return variance
+            cov = self.returns.cov().values * 252
+            return weights @ cov @ weights
+        
+        def volatility(weights):
+            return np.sqrt(variance(weights))
+            
         def risk_contrib(weights):
-            return weights * (self.returns.cov() @ weights)
+            cov = self.returns.cov().values * 252
+            port_vol = volatility(weights)
+            return weights * (cov @ weights) / port_vol
             
         def risk_parity(weights):
             
@@ -300,6 +302,14 @@ class Portfolio:
             target = total_risk / len(weights)
             
             return np.sum(((RC - target)/total_risk)**2)
+
+        def diversification_ratio(weights):
+            cov = self.returns.cov().values * 252
+            asset_vol = np.sqrt(np.diag(cov))
+            port_vol = np.sqrt(weights @ cov @ weights)
+            dr = (weights @ asset_vol) / port_vol
+            return -dr
+            
         
         n_assets = len(self.returns.columns)
         weight = np.array([1 / n_assets] * n_assets)
@@ -324,6 +334,9 @@ class Portfolio:
         elif objective=='risk_parity':
             
             optimum_weights = sco.minimize(risk_parity, weight, method='SLSQP', bounds=bounds, constraints=constraints)
+        elif objective=='maximum_diversification':
+            
+            optimum_weights = sco.minimize(diversification_ratio, weight, method='SLSQP', bounds=bounds, constraints=constraints)
         else:
             
             print("Objective function undefined")
