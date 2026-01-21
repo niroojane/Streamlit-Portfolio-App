@@ -49,6 +49,32 @@ def variance_decomposition_ex_post(quantities,prices):
     
     return results
 
+
+def first_pca_over_time(returns,window=252):
+    dico = {}
+    window=30
+    for i in range(0, returns.shape[0], window):
+        temp = returns.iloc[i:i+window]
+        index=temp.index[-1]
+        # skip incomplete last window if needed
+        if temp.shape[0] < window:
+            continue
+    
+        cov_matrix = temp.cov()
+    
+        eig_val, eig_vec = np.linalg.eigh(cov_matrix)
+    
+        # sort eigenvalues descending
+        idx = eig_val.argsort()[::-1]
+        eig_val = eig_val[idx]
+    
+        variance_explained = eig_val / eig_val.sum()
+    
+        dico[index] = variance_explained[0]
+        
+    results=pd.DataFrame(dico.values(),index=dico.keys())
+
+    return results
 def halton_sequences(number,base=2):
     
     #Generate Halton sequences
