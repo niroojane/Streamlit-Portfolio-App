@@ -141,7 +141,7 @@ if uploaded_file:
         optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
         minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
         risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
-
+        max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
 
         st.subheader("Optimized Weights")
 
@@ -150,17 +150,21 @@ if uploaded_file:
         optimized_weights = portfolio.optimize(objective="sharpe_ratio")
         minvar_weights = portfolio.optimize(objective="minimum_variance")
         risk_parity_weights = portfolio.optimize(objective="risk_parity")
-
+        max_diversification=portfolio.optimize(objective="maximum_diversification")
         
         allocation['Optimal Portfolio']=optimized_weights.tolist()
         allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
 
         allocation['Minimum Variance Portfolio']=minvar_weights.tolist()
         allocation['Minimum Variance Constrained Portfolio']=minvar_weights_constraint.tolist()
-
+        
+        allocation['Maximum Diversification Portfolio']=max_diversification.tolist()
+        allocation['Maximum Diversification Constrained Portfolio']=max_diversification_weights_constraint.tolist()
+        
         allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
         allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-        
+
+
         allocation_dataframe=pd.DataFrame(allocation,index=returns.columns).T.round(6)
         
         
@@ -363,21 +367,23 @@ if uploaded_file:
         optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
         minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
         risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
-        
+        max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
+
         optimized_weights = portfolio.optimize(objective="sharpe_ratio")
         minvar_weights = portfolio.optimize(objective="minimum_variance")
         risk_parity_weights = portfolio.optimize(objective="risk_parity")
-
-        optimal_results={}
+        max_diversification=portfolio.optimize(objective="maximum_diversification")
+        
+        optimal_results={}  
 
         optimal_results['Current Optimal Portfolio']=optimized_weights.tolist()
         optimal_results['Current Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
         optimal_results['Current Minimum Variance Portfolio']=minvar_weights.tolist()
         optimal_results['Current Minimum Variance Constrained Portfolio']=minvar_weights_constraint
+        optimal_results['Current Maximum Diversification Portfolio']=max_diversification.tolist()
+        optimal_results['Current Maximum Diversification Portfolio Constrained']=max_diversification_weights_constraint.tolist()
         optimal_results['Current Risk Parity Portfolio']=risk_parity_weights.tolist()
         optimal_results['Current Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-
-
 
         former_results={}
         
