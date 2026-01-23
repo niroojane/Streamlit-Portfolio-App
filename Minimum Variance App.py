@@ -13,33 +13,20 @@ import matplotlib.pyplot as plt
 
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
-from RiskMetrics import RiskAnalysis,create_constraint,diversification_constraint
+from RiskMetrics import *
 from Price_Endpoint import *
 from Stock_Data import get_close
 from Rebalancing import *
 
-selected_number = st.slider(
-    "Number of Crypto:",
-    min_value=1,
-    max_value=40,
-    value=20,     
-    step=1           
-)
-tickers=get_market_cap()['Ticker'].iloc[:selected_number].to_list()
-market_cap_table=get_market_cap()[['Long name','Ticker','Market Cap','Supply']].set_index('Ticker').iloc[:selected_number]
-selected = st.multiselect("Select Crypto:", tickers,default=tickers)
+from Metrics import *
 
-st.dataframe(market_cap_table)
-
-starting_date= st.date_input("Starting Date", datetime.datetime(2020, 1, 1))
-dt = datetime.datetime.combine(starting_date, datetime.datetime.min.time())
-
-@st.cache_data
-def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.datetime.today()):
-
+def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=None):
+    if today is None:
+        today=datetime.datetime.today()
+    
     days=(today-start_date).days
-
     
     remaining=days%500
     numbers_of_table=days//500
@@ -76,268 +63,487 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=datetime.date
     
     returns_to_use.index=pd.to_datetime(returns_to_use.index)
     returns_to_use = returns_to_use[~returns_to_use.index.duplicated(keep='first')]
+    st.session_state.dataframe = dataframe.ffill()
+    st.session_state.returns_to_use = returns_to_use.fillna(0)
+
+tab1,tab2,tab3,tab4,tab5,tab6,tab7 = st.tabs(["Investment Universe", "Strategy","Strategy Return","Risk Contribution","Value at Risk","Market Risk","Correlation"])
+
+            
+with tab1:
     
-    return dataframe.ffill(), returns_to_use.fillna(0)
+    selected_number = st.slider(
+        "Number of Crypto:",
+        min_value=1,
+        max_value=40,
+        value=20,     
+        step=1           
+    )
+    tickers=get_market_cap()['Ticker'].iloc[:selected_number].to_list()
+    market_cap_table=get_market_cap()[['Long name','Ticker','Market Cap','Supply']].set_index('Ticker').iloc[:selected_number]
+    selected = st.multiselect("Select Crypto:", tickers,default=tickers)
+    
+    st.dataframe(market_cap_table)
+    
+    starting_date= st.date_input("Starting Date", datetime.datetime(2020, 1, 1))
+    dt = datetime.datetime.combine(starting_date, datetime.datetime.min.time())
 
-
-st.subheader("Constraints")
-
-dataframe,returns_to_use=load_data(tickers=selected,start_date=dt)
-
-data = pd.DataFrame({'Asset':[None],
-'Sign':[None],
-'Limit':[None]
-})
-drop_down_list=list(dataframe.columns)+['All']
-# Define dropdown options for the 'Risk Level' column
-column_config = {'Asset':st.column_config.SelectboxColumn(
-    options=drop_down_list),
-'Sign': st.column_config.SelectboxColumn(
-    options=["=", "≥", "≤"],  # Dropdown options
-    help="Select the risk level for each asset."  # Tooltip for the column
-)
-}
-
-# Create the editable data editor with dropdown
-editable_data = st.data_editor(
-data,
-column_config=column_config,
-num_rows="dynamic",  # Allow rows to be added dynamically
-)
-
-constraint_matrix=editable_data.to_numpy()
-constraints=[]
-
-try:
-    for row in range(constraint_matrix.shape[0]):
-        temp = constraint_matrix[row, :]
-        ticker = temp[0]
+    price_button=st.button(label='Get Prices')
         
-        if ticker not in drop_down_list:
-            continue
+    if price_button:
+        with st.spinner("Loading market data...",show_time=True):
+            load_data(tickers,dt)
+            st.success("Done!")
             
-        sign = temp[1]
-        limit = float(temp[2])
+    if "dataframe" not in st.session_state:
+        st.info("Click the button to load data ⬆️")
+    else:
+        
+        dataframe=st.session_state.dataframe
+        returns_to_use=st.session_state.returns_to_use
+        
+        max_value = dataframe.index.max().strftime('%Y-%m-%d')
+        min_value = dataframe.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+        value=(min_value,max_value)
+        
+        Model = st.slider(
+            'Date:',
+            min_value=min_value,
+            max_value=max_value,
+            value=value,key='tab1')
+        
+        selmin, selmax = Model
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        
+        # Filter data by selected date range
+        mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+        
+        asset_returns=get_asset_returns(dataframe.loc[mask])
+        asset_risk=get_asset_risk(dataframe.loc[mask])
+        
+        st.dataframe(dataframe.loc[mask])
+    
+        st.dataframe(asset_returns)
+        st.dataframe(asset_risk)
+        
+        fig = px.line(dataframe.loc[mask], title='Price', width=800, height=400)
+        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+        fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
+    
+        st.plotly_chart(fig)
 
-        if ticker=='All':
-            constraint= diversification_constraint(sign,limit)
+        cumulative_returns=returns_to_use.loc[mask].copy()
+        cumulative_returns.iloc[0]=0
+        cumulative_returns=(1+cumulative_returns).cumprod()*100
+        
+        fig2 = px.line(cumulative_returns, title='Cumulative Performance', width=800, height=400)
+        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+        fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
+    
+        st.plotly_chart(fig2)
+
+with tab2:
+
+    dico_strategies = {
+    'Minimum Variance': 'minimum_variance',
+    'Risk Parity': 'risk_parity',
+    'Sharpe Ratio': 'sharpe_ratio',
+    'Maximum Diversification':'maximum_diversification'}
+    
+    if "dataframe" not in st.session_state:
+        st.info("Load data first ⬅️")
+    else:
+        dataframe = st.session_state.dataframe
+        returns_to_use = st.session_state.returns_to_use
+        max_value = dataframe.index.max().strftime('%Y-%m-%d')
+        min_value = dataframe.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+        value=(min_value,max_value)
+        
+        Model2 = st.slider(
+            'Date:',
+            min_value=min_value,
+            max_value=max_value,
+            value=value,key='tab2')
+    
+        selmin, selmax = Model2
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        
+        # Filter data by selected date range
+        mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+        
+        range_prices=dataframe.loc[mask].copy()
+        range_returns=returns_to_use.loc[mask].copy()
+        
+        portfolio=RiskAnalysis(range_returns)
+        
+        asset_returns=get_asset_returns(range_prices)
+        asset_risk=get_asset_risk(range_prices)
+        
+        st.dataframe(asset_returns)
+        st.dataframe(asset_risk)
+                
+    
+        st.subheader("Constraints")  
+                
+        data = pd.DataFrame({'Asset':[None],
+        'Sign':[None],
+        'Limit':[None]
+        })
+        drop_down_list=list(range_returns.columns)+['All']
+        # Define dropdown options for the 'Risk Level' column
+        column_config = {'Asset':st.column_config.SelectboxColumn(
+            options=drop_down_list),
+        'Sign': st.column_config.SelectboxColumn(
+            options=["=", "≥", "≤"],  # Dropdown options
+            help="Select the risk level for each asset."  # Tooltip for the column
+        )
+        }
+        
+        # Create the editable data editor with dropdown
+        editable_data = st.data_editor(
+        data,
+        column_config=column_config,
+        num_rows="dynamic",  # Allow rows to be added dynamically
+        )
+    
+        constraint_matrix=editable_data.to_numpy()
+        constraints=[]
+
+        try:
+            for row in range(constraint_matrix.shape[0]):
+                temp = constraint_matrix[row, :]
+                ticker = temp[0]
+                
+                if ticker not in drop_down_list:
+                    continue
+                    
+                sign = temp[1]
+                limit = float(temp[2])
+
+                if ticker=='All':
+                    constraint= diversification_constraint(sign,limit)
+                else:
+                    position = np.where(range_prices.columns == ticker)[0][0]
+                    constraint = create_constraint(sign, limit, position)
+                    
+                constraints.extend(constraint)
+                
+        
+        except Exception as e:
+            pass
+
+
+
+        st.subheader("Portfolio Construction")
+
+        allocation={}
+        
+        optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
+        minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
+        risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
+        max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
+        
+        optimized_weights = portfolio.optimize(objective="sharpe_ratio")
+        minvar_weights = portfolio.optimize(objective="minimum_variance")
+        risk_parity_weights = portfolio.optimize(objective="risk_parity")
+        max_diversification=portfolio.optimize(objective="maximum_diversification")
+        
+        allocation['Optimal Portfolio']=optimized_weights.tolist()
+        allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
+
+        allocation['Minimum Variance Portfolio']=minvar_weights.tolist()
+        allocation['Minimum Variance Constrained Portfolio']=minvar_weights_constraint.tolist()
+        
+        allocation['Maximum Diversification Portfolio']=max_diversification.tolist()
+        allocation['Maximum Diversification Constrained Portfolio']=max_diversification_weights_constraint.tolist()
+        
+        allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
+        allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
+
+        
+        
+        allocation_dataframe = pd.DataFrame(
+                allocation,
+                index=dataframe.columns
+            ).T.round(6)
+        
+        
+        st.session_state.allocation_dataframe = st.data_editor(
+            allocation_dataframe,
+            num_rows="dynamic",
+        key='allocation_editor')
+
+        options_strat = list(dico_strategies.keys())
+        rebalancing_frequency=['Monthly', 'Quarterly', 'Yearly']
+        selected_strategy = st.selectbox("Strategy:", options_strat,index=0)
+        selected_frequency = st.selectbox("Rebalancing Frequency:", rebalancing_frequency,index=0)
+        benchmark_tracking_error=st.selectbox("Benchmark:", list(allocation_dataframe.index),index=0)
+        window_vol=st.number_input("Sliding Window Size:",min_value=0,value=252,step=1)
+        results=st.button(label='Get Results')
+
+        if results:
+
+            freq_map = {
+                'Monthly': pd.offsets.BMonthEnd(),
+                'Quarterly': pd.offsets.BQuarterEnd(),
+                'Yearly': pd.offsets.BYearEnd()
+            }
+            offset = freq_map.get(selected_frequency, pd.offsets.BMonthEnd())
+            candidate_anchors = pd.DatetimeIndex(sorted(set(range_prices.index + offset)))
+            if candidate_anchors.empty:
+                candidate_anchors = pd.DatetimeIndex([range_returns.index[-1]])
+    
+            idx = range_returns.index.get_indexer(candidate_anchors, method='nearest')
+            idx = np.array(idx)
+            idx = idx[idx >= 0]
+            selected_dates = range_returns.index[idx].tolist()
+            selected_dates = sorted(list(set(selected_dates + [returns_to_use.index[-1]])))
+            dates_end = selected_dates
+    
+            if len(dates_end) < 2:
+                print("⚠️ Not enough anchor dates to perform rolling optimization.")
+    
+            
+            results={}
+            
+            
+            for i in range(len(dates_end)-1):
+                dataset=range_returns.loc[dates_end[i]:dates_end[i+1]]
+                risk=RiskAnalysis(dataset)
+                date=dataset.index[-1]
+                
+                optimal=risk.optimize(objective=dico_strategies[selected_strategy],constraints=constraints)
+                results[date]=np.round(optimal,6)
+            
+            rolling_optimization=pd.DataFrame(results,index=dataframe.columns).T
+            rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
+            rolling_optimization=rolling_optimization.sort_index()
+            
+            st.subheader("Weights Matrix")
+    
+            st.dataframe(rolling_optimization)
+                        
+            model = pd.DataFrame(rolling_optimization.iloc[-2])
+            model.columns = ["Model"]
+            alloc_df = st.session_state.allocation_dataframe.copy()
+
+            if "Model" in alloc_df.index:
+                alloc_df.loc["Model"] = model.T # update existing
+            else:
+                alloc_df = pd.concat([alloc_df, model.T], axis=0)
+        
+            st.session_state.allocation_dataframe = alloc_df
+
+            # st.session_state.allocation_dataframe= st.data_editor(
+            # alloc_df,
+            # num_rows="dynamic")
+            
+            quantities = rebalanced_dynamic_quantities(dataframe, rolling_optimization)
+            performance_fund = pd.DataFrame({'Fund': (quantities * dataframe).sum(axis=1)})
+            if 'BTCUSDT' in range_prices.columns:
+                performance_fund['Bitcoin'] = range_prices['BTCUSDT']
+            performance_pct = performance_fund.pct_change(fill_method=None)
+    
+            st.session_state.rolling_optimization= rolling_optimization
+            st.session_state.quantities= quantities
+            st.session_state.performance_pct= performance_pct
+    
+            cumulative=(1+performance_pct).cumprod()*100
+            drawdown=pd.DataFrame((cumulative-cumulative.cummax()))/cumulative.cummax()            
+            date_drawdown=drawdown.idxmin().dt.date
+            max_drawdown=drawdown.min()
+            
+            metrics={}
+            metrics['Tracking Error']=((performance_pct['Fund']-performance_pct['Bitcoin']).std()*np.sqrt(252)).round(4)
+            metrics['Fund Vol']=(performance_pct['Fund'].std()*np.sqrt(252)).round(4)
+            metrics['Bitcoin Vol']=(performance_pct['Bitcoin'].std()*np.sqrt(252)).round(4)
+            metrics['Fund Return']=(performance_fund['Fund'].iloc[-2]/performance_fund['Fund'].iloc[0]).round(4)
+            metrics['Bitcoin Return']=(performance_fund['Bitcoin'].iloc[-2]/performance_fund['Bitcoin'].iloc[0]).round(4)
+            metrics['Sharpe Ratio']=((1+metrics['Fund Return'])**(1/len(set(returns_to_use.index.year)))/metrics['Fund Vol']).round(4)
+            metrics['Bitcoin Sharpe Ratio']=((1+metrics['Bitcoin Return'])**(1/len(set(returns_to_use.index.year)))/metrics['Bitcoin Vol']).round(4)
+    
+            metrics['Fund Drawdown']=max_drawdown['Fund'].round(4)
+            metrics['Bitcoin Drawdown']=max_drawdown['Bitcoin'].round(4)
+            
+            metrics['Fund Date Drawdown']=date_drawdown['Fund']
+            metrics['Bitcoin Date Drawdown']=date_drawdown['Bitcoin']
+            
+            indicators=pd.DataFrame(metrics.values(),index=metrics.keys(),columns=['Indicators'])
+            cumulative_performance = performance_pct.loc[mask]
+    
+            cumulative_performance.iloc[0] = 0
+            cumulative_results = (1 + cumulative_performance).cumprod() * 100
+            
+            portfolio_returns = rebalanced_time_series(range_prices, alloc_df, frequency=selected_frequency)
+            cumulative_results=pd.concat([cumulative_results,portfolio_returns],axis=1)
+
+            st.session_state.cumulative_results=cumulative_results
+            global_returns=cumulative_results.pct_change()
+                    
+            drawdown = (cumulative_results - cumulative_results.cummax()) / cumulative_results.cummax()
+            rolling_vol_ptf=cumulative_results.pct_change().rolling(window_vol).std()*np.sqrt(260)
+            frontier_indicators, fig4 = get_frontier(range_returns,alloc_df)
+            
+            st.subheader("Results")
+        
+            st.dataframe(indicators)
+    
+            st.dataframe(rebalanced_metrics(cumulative_results))
+            st.dataframe(get_portfolio_risk(alloc_df, range_prices, cumulative_results, benchmark_tracking_error))
+    
+    
+            st.dataframe(frontier_indicators)
+            
+            st.subheader("Charts")
+    
+            fig = px.line(cumulative_results, title='Performance', width=800, height=400)
+            fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+            fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+            fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+    
+            st.plotly_chart(fig)
+            
+    
+            fig2 = px.line(drawdown, title='Drawdown', width=800, height=400)
+            fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+            fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+            fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
+    
+            st.plotly_chart(fig2)
+    
+            fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+            fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
+            fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+            fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
+    
+            st.plotly_chart(fig3)
+            
+            fig4.update_layout(width=800, height=400,title={'text': "Efficient Frontier"})
+            fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
+    
+            st.plotly_chart(fig4)            
+
+            st.subheader("Times Series")
+
+            st.dataframe(cumulative_results)
+
+
+with tab3:
+    
+    if "dataframe" not in st.session_state:
+        st.info("Load data first ⬅️")
+
+    elif "cumulative_results" not in st.session_state:
+        st.info("Compute Optimization first ⬅️")
+        
+    else:
+
+        rebalancing_frequency=['Month', 'Year']
+        allocation_dataframe=st.session_state.allocation_dataframe
+        cumulative_results=st.session_state.cumulative_results
+        
+        selected_frequency_calendar = st.selectbox("Rebalancing Frequency:", rebalancing_frequency,index=1,key='selected_frequency_calendar')
+        fund_calendar=st.selectbox("Fund:", list(cumulative_results.columns),index=0,key='fund_calendar')
+        benchmark_calendar=st.selectbox("Benchmark:", list(cumulative_results.columns),index=1,key='benchmark_calendar')
+
+        if benchmark_calendar==fund_calendar:
+            st.info("Benchmark and Fund must be different ⬅️")
         else:
-            position = np.where(dataframe.columns == ticker)[0][0]
-            constraint = create_constraint(sign, limit, position)
+            graphs=get_calendar_graph(cumulative_results, 
+                               freq=selected_frequency_calendar, 
+                               benchmark=benchmark_calendar, 
+                               fund=fund_calendar)
+            for name, fig in graphs.items():
+                st.plotly_chart(fig, use_container_width=True, key=f"plot_{name}")
+
+with tab4:    
+
+    if "dataframe" not in st.session_state:
+        st.info("Load data first ⬅️")
+        
+    elif "allocation_dataframe" not in st.session_state:
+        st.info("Compute Optimization first ⬅️")
+
+    else:
+        
+        dataframe = st.session_state.dataframe
+        returns_to_use = st.session_state.returns_to_use
+        allocation_dataframe=st.session_state.allocation_dataframe
+        
+        max_value = dataframe.index.max().strftime('%Y-%m-%d')
+        min_value = dataframe.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+        value=(min_value,max_value)
+
+        Model3 = st.slider(
+            'Date:',
+            min_value=min_value,
+            max_value=max_value,
+            value=value,key='tab3')
+    
+        selmin, selmax = Model3
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        
+        mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+        
+        range_prices=dataframe.loc[mask].copy()
+        range_returns=returns_to_use.loc[mask].copy()
+
+        portfolio = RiskAnalysis(range_returns)     
+
+        fund_risk=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='fund_risk')
+        benchmark_risk=st.selectbox("Benchmark:", list(allocation_dataframe.index),index=1,key='benchmark_risk')
+        
+        selected_weights = allocation_dataframe.loc[fund_risk]
+        
+        decomposition = pd.DataFrame(portfolio.var_contrib_pct(selected_weights))*100
+        
+        quantities_rebalanced = rebalanced_portfolio(range_prices, selected_weights) / range_prices
+        quantities_buy_hold = buy_and_hold(range_prices, selected_weights) / range_prices
+        
+        cost_rebalanced = rebalanced_book_cost(range_prices, quantities_rebalanced)
+        cost_buy_and_hold = rebalanced_book_cost(range_prices, quantities_buy_hold)
+        
+        mtm_rebalanced = quantities_rebalanced * range_prices
+        mtm_buy_and_hold = quantities_buy_hold * range_prices
+        
+        pnl_buy_and_hold=pd.DataFrame((mtm_buy_and_hold-cost_buy_and_hold).iloc[-1])
+        pnl_buy_and_hold.columns=['Profit and Loss (Buy and Hold)']
+        
+        pnl_rebalanced=pd.DataFrame((mtm_rebalanced-cost_rebalanced).iloc[-1])
+        pnl_rebalanced.columns=['Profit and Loss (Rebalanced)']
+        
+        profit_and_loss_simulated = pd.concat([pnl_buy_and_hold, pnl_rebalanced, decomposition], axis=1)
+        profit_and_loss_simulated.loc['Total'] = profit_and_loss_simulated.sum(axis=0)
+        profit_and_loss_simulated=profit_and_loss_simulated.fillna(0)
+        profit_and_loss_simulated=profit_and_loss_simulated.sort_values(by='Variance Contribution in %', ascending=False)
+    
+        vol_ex_ante = {}
+        tracking_error_ex_ante = {}
+        
+        for idx in allocation_dataframe.index:
+            vol_ex_ante[idx] = portfolio.variance(allocation_dataframe.loc[idx])
+            tracking_error_ex_ante[idx] = portfolio.variance(allocation_dataframe.loc[idx] - allocation_dataframe.loc[benchmark_risk])
+
+        data = {
+            'Vol Ex Ante': vol_ex_ante,
+            'Tracking Error Ex Ante': tracking_error_ex_ante
+        }
+        
+        ex_ante_dataframe = pd.DataFrame(data)
             
-        constraints.extend(constraint)
-            
+        st.dataframe(profit_and_loss_simulated)
+        st.dataframe(ex_ante_dataframe)
+
+
+        
     
-except Exception as e:
-    pass
-
-
-if 'USDCUSDT' in returns_to_use.columns:
-    
-    cash=np.where(returns_to_use.columns=='USDCUSDT')[0][0]
-
-else:
-
-    cash=[]
-
-constraints.extend([{'type': 'eq', 'fun': lambda weights: weights[cash]-0.00}])
-
-
-month=list(sorted(set(returns_to_use.index + pd.offsets.BMonthEnd(0))))
-#month_end=pd.to_datetime(mrat_wo_na.index)
-month = pd.to_datetime(month)
-
-idx1 = pd.Index(returns_to_use.iloc[:-1].index)
-idx2 = pd.Index(month)
-closest_dates = idx1[idx1.get_indexer(idx2, method='nearest')]
-
-dates_end=list(closest_dates)
-dates_end.insert(0,returns_to_use.index[1])
-dates_end.append(returns_to_use.index[-1])
-dates_end=sorted(list(set(dates_end)))
-dates_end.pop(0)
-dates_end=sorted(list(set(dates_end)))
-
-results={}
-
-
-for i in range(len(dates_end)-1):
-    dataset=returns_to_use.loc[dates_end[i]:dates_end[i+1]]
-    risk=RiskAnalysis(dataset)
-    date=dataset.index[-1]
-    
-    optimal=risk.optimize(objective='minimum_variance',constraints=constraints)
-    results[date]=np.round(optimal,6)
-
-rolling_optimization=pd.DataFrame(results,index=dataframe.columns).T
-rolling_optimization.loc[dates_end[0]]=1/len(dataframe.columns)
-rolling_optimization=rolling_optimization.sort_index()
-
-
-
-st.subheader("Portfolio Composition")
-
-
-dates_options=sorted(dates_end[:-1],reverse=True)
-
-selected_date = st.selectbox("Weights history:", dates_options,index=1)
-
-last_weights=rolling_optimization.loc[selected_date]
-weights=pd.DataFrame(last_weights).sort_values(by=selected_date, ascending=False)
-st.dataframe(weights)
-
-# last_weights=tracking[dates_end[-3]][0]
-# weights=pd.DataFrame(last_weights.values(),index=last_weights.keys(),columns=['Weights Model'])
-
-# current_positions=Binance.get_inventory().round(4)
-# current_positions.columns=['Current Portfolio in USDT','Current Weights']
-# amount=current_positions.loc['Total']['Current Portfolio in USDT']
-
-# last_prices=Binance.get_price(list(last_weights.keys()))
-
-# quantities={}
-
-# for key in last_weights:
-#     quantities[key]=amount*last_weights[key]#/last_prices[key].values[0]
-
-# positions=pd.DataFrame(quantities.values(),index=quantities.keys(),columns=['Mark To Market Model'])
-# positions=pd.concat([positions,weights],axis=1)
-
-# condition=current_positions.index!='Total'
-# portfolio_composition=pd.concat([positions,current_positions.loc[condition]],axis=1).fillna(0)
-# portfolio_composition.loc['Total']=portfolio_composition.sum(axis=0)
-# portfolio_composition=portfolio_composition.sort_values(by='Weights Model',ascending=False).round(4)
-
-# st.dataframe(portfolio_composition)
-
-
-st.header("Yearly Metrics")
-
-performance=pd.DataFrame()
-quantities=rebalanced_dynamic_quantities(dataframe,rolling_optimization)
-fund=(quantities*dataframe).sum(axis=1)
-performance['Fund']=fund
-performance['Bitcoin']=dataframe['BTCUSDT']
-
-performance_pct=performance.copy()
-performance_pct=performance_pct.pct_change(fill_method=None)
-
-
-years=sorted(list(set(performance.index.year)))
-month_year=performance.index.strftime('%Y-%m')
-month_year=sorted(list(set(month_year)))
-
-year_returns={}
-year_vol={}
-year_tracking_error={}
-year_sharpe_ratio={}
-
-for year in years:
-    temp=performance.loc[str(year)].pct_change()
-    year_vol[year]=temp.std()*np.sqrt(252)
-    year_tracking_error[year]=(temp['Fund']-temp['Bitcoin']).std()*np.sqrt(252)
-    perf_year=performance.loc[str(year)].iloc[-1]/performance.loc[str(year)].iloc[0]-1
-    year_sharpe_ratio[year]=perf_year/(temp.std()*np.sqrt(252))
-    year_returns[year]=perf_year
-
-year_returns_dataframe=pd.DataFrame(year_returns)
-year_vol_dataframe=pd.DataFrame(year_vol)
-year_tracking_error_dataframe=pd.DataFrame(year_tracking_error.items(),columns=['Date','Tracking Error']).set_index('Date').T.round(6)
-year_sharpe_ratio_dataframe=pd.DataFrame(year_sharpe_ratio)
-
-st.subheader("Yearly Returns")
-st.dataframe(year_returns_dataframe)
-
-st.subheader("Yearly Volatility")
-st.dataframe(year_vol_dataframe)
-
-st.subheader("Yearly Tracking Error")
-st.dataframe(year_tracking_error_dataframe)
-
-st.subheader("Yearly Sharpe Ratio")
-st.dataframe(year_sharpe_ratio_dataframe)
-
-month_returns={}
-month_vol={}
-month_tracking_error={}
-monthly_sharpe_ratio={}
-
-for month in month_year:
-    temp=performance.loc[str(month)].pct_change()
-    month_vol[month]=temp.std()*np.sqrt(252)
-    month_tracking_error[month]=(temp['Fund']-temp['Bitcoin']).std()*np.sqrt(252)
-    perf_year=performance.loc[str(month)].iloc[-1]/performance.loc[str(month)].iloc[0]-1
-    month_returns[month]=perf_year
-    monthly_sharpe_ratio[month]=perf_year/(temp.std()*np.sqrt(252))
-
-month_returns_dataframe=pd.DataFrame(month_returns)
-month_vol_dataframe=pd.DataFrame(month_vol)
-month_tracking_error_dataframe=pd.DataFrame(month_tracking_error.items(),columns=['Date','Tracking Error']).set_index('Date').T.round(6)
-month_sharpe_ratio_dataframe=pd.DataFrame(monthly_sharpe_ratio)
-
-st.header("Monthly Metrics")
-
-st.subheader("Monthly Returns")
-st.dataframe(month_returns_dataframe)
-
-st.subheader("Monthly Volatility")
-st.dataframe(month_vol_dataframe)
-
-st.subheader("Monthly Tracking Error")
-st.dataframe(month_tracking_error_dataframe)
-
-st.subheader("Monthly Sharpe Ratio")
-st.dataframe(month_sharpe_ratio_dataframe)
-
-st.subheader("Indicators")
-
-metrics={}
-metrics['Tracking Error']=(performance_pct['Fund']-performance_pct['Bitcoin']).std()*np.sqrt(252)
-metrics['Fund Vol']=performance_pct['Fund'].std()*np.sqrt(252)
-metrics['Bench Vol']=performance_pct['Bitcoin'].std()*np.sqrt(252)
-metrics['Fund Return']=performance['Fund'].iloc[-2]/performance['Fund'].iloc[0]
-metrics['Bench Return']=performance['Bitcoin'].iloc[-2]/performance['Bitcoin'].iloc[0]
-metrics['Sharpe Ratio']=(1+metrics['Fund Return'])**(1/len(set(returns_to_use.index.year)))/metrics['Fund Vol']
-
-indicators=pd.DataFrame(metrics.values(),index=metrics.keys(),columns=['Indicators'])
-st.dataframe(indicators)
-
-
-st.subheader("Portfolio Value Evolution")
-
-max_value = performance_pct.index.max().strftime('%Y-%m-%d')
-min_value = performance_pct.index.min().strftime('%Y-%m-%d')
-starting_min_value = (rolling_optimization.index[1]+datetime.timedelta(1)).strftime('%Y-%m-%d')
-
-max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
-min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
-starting_min_value=datetime.datetime.strptime(starting_min_value, '%Y-%m-%d')
-
-value=(starting_min_value,max_value)
-
-Model = st.slider(
-    'Date:',
-    min_value=min_value,
-    max_value=max_value,
-    value=value)
-
-selmin, selmax = Model
-selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
-selmaxd = selmax.strftime('%Y-%m-%d')
-
-selmin, selmax = Model
-
-selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
-selmaxd = selmax.strftime('%Y-%m-%d')
-
-mask = (performance_pct.index >= selmind) & (performance_pct.index <= selmaxd)
-
-portfolio_returns=(1+performance_pct.loc[mask]).cumprod()*100
-
-fig = px.line(portfolio_returns, title="Portfolio Value Evolution")
-st.plotly_chart(fig)
-st.dataframe((1+performance_pct.loc[mask]).cumprod()*100)
-
-st.title("Prices")
-st.dataframe(dataframe)
-
