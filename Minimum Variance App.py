@@ -509,13 +509,12 @@ with tab4:
         min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
         value=(min_value,max_value)
         
-        st.subheader("Risk Decomposition")
 
         Model3 = st.slider(
             'Date:',
             min_value=min_value,
             max_value=max_value,
-            value=value,key='tab3')
+            value=value,key='tab4')
     
         selmin, selmax = Model3
         selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
@@ -526,7 +525,9 @@ with tab4:
         range_prices=dataframe.loc[mask].copy()
         range_returns=returns_to_use.loc[mask].copy()
 
-        portfolio = RiskAnalysis(range_returns)     
+        portfolio = RiskAnalysis(range_returns)    
+        
+        st.subheader("Risk Decomposition")
 
         fund_risk=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='fund_risk')
         benchmark_risk=st.selectbox("Benchmark:", list(allocation_dataframe.index),index=1,key='benchmark_risk')
@@ -576,6 +577,267 @@ with tab4:
 
         st.dataframe(ex_ante_dataframe)
 
+with tab5:
+    if "dataframe" not in st.session_state:
+        st.info("Load data first ⬅️")
+        
+    elif st.session_state.results is None:
+        st.info("Compute Optimization first ⬅️")
+
+    else:
+    
+        dataframe = st.session_state.dataframe
+        returns_to_use = st.session_state.returns_to_use
+        res=st.session_state.results
+        allocation_dataframe=res["alloc_df"]
+            
+        max_value = dataframe.index.max().strftime('%Y-%m-%d')
+        min_value = dataframe.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
+        value=(min_value,max_value)
+
+        Model4 = st.slider(
+        'Date:',
+        min_value=min_value,
+        max_value=max_value,
+        value=value,key='tab5')
+    
+        selmin, selmax = Model3
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        
+        mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+        
+        range_prices=dataframe.loc[mask].copy()
+        range_returns=returns_to_use.loc[mask].copy()
 
         
+        stress_factor=st.number_input("Stress Factor:", min_value=1.0, value=1.0, step=1.0)
+        iterations=st.number_input("Iterations:", min_value=1, value=10000, step=1)
+        num_scenarios=st.number_input("Scenarios:", min_value=1, value=100, step=1)
+        var_centile=st.number_input("Centile:", min_value=0.00, value=0.05, step=0.01)
+
+        var_button=st.button("Value at Risk:")
     
+        selected_fund_var=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='selected_fund_var')
+
+    
+        horizon = 1 / 250
+        spot = dataframe.iloc[-1]
+        theta = 2
+    
+        distrib_functions = {
+            'multivariate_distribution': (iterations, stress_factor),
+            'gaussian_copula': (iterations, stress_factor),
+            't_copula': (iterations, stress_factor),
+            'gumbel_copula': (iterations, theta),
+            'monte_carlo': (spot, horizon, iterations, stress_factor)
+        }
+
+        
+        var_scenarios, cvar_scenarios, fund_results = {}, {}, {}
+        
+        portfolio = RiskAnalysis(range_returns)
+        
+        if "fund_results" not in st.session_state:
+            st.session_state.fund_results = None
+            st.session_state.var_scenarios=None
+            st.session_state.cvar_scenarios=None
+            
+        if var_button:
+        
+            st.session_state.fund_results=None
+            st.session_state.var_scenarios=None
+            st.session_state.cvar_scenarios=None
+            
+            for index in allocation_dataframe.index:
+                var_scenarios[index], cvar_scenarios[index] = {}, {}
+                for func_name, args in distrib_functions.items():
+                    func = getattr(portfolio, func_name)
+                    scenarios = {}
+            
+                    for i in range(num_scenarios):
+                        if func_name == 'monte_carlo':
+                            distrib = pd.DataFrame(func(*args)[1], columns=range_returns.columns)
+                        else:
+                            distrib = pd.DataFrame(func(*args), columns=range_returns.columns)
+                
+                        distrib = distrib * allocation_dataframe.loc[index]
+                        distrib = distrib[distrib.columns[allocation_dataframe.loc[index] > 0]]
+                        distrib['Portfolio'] = distrib.sum(axis=1)
+                
+                        results = distrib.sort_values(by='Portfolio').iloc[int(distrib.shape[0] * var_centile)]
+                        scenarios[i] = results
+            
+                    scenario = pd.DataFrame(scenarios).T
+                    mean_scenario = scenario.mean()
+                    index_cvar = scenario['Portfolio'] < mean_scenario['Portfolio']
+                    cvar = scenario.loc[index_cvar].mean()
+                
+                    var_scenarios[index][func_name] = mean_scenario
+                    cvar_scenarios[index][func_name] = cvar
+                
+                fund_results[index] = {'Value At Risk': mean_scenario.loc['Portfolio'],'CVaR': cvar.loc['Portfolio']}
+    
+            st.session_state.var_scenarios=var_scenarios
+            st.session_state.cvar_scenarios=cvar_scenarios
+            st.session_state.fund_results=fund_results
+
+    
+        if st.session_state.fund_results is not None:
+            
+            var_scenarios=st.session_state.var_scenarios
+            cvar_scenarios=st.session_state.cvar_scenarios
+            fund_results=st.session_state.fund_results   
+            
+            columns = ['Multivariate', 'Gaussian Copula', 'T-Student Copula', 'Gumbel Copula', 'Monte Carlo']
+        
+            var_dataframe = pd.DataFrame(var_scenarios[selected_fund_var])
+            var_dataframe.columns = columns
+        
+            cvar_dataframe = pd.DataFrame(cvar_scenarios[selected_fund_var])
+            cvar_dataframe.columns = columns
+        
+            fund_results_dataframe = pd.DataFrame(fund_results).T
+            
+            st.dataframe(var_dataframe)
+            st.dataframe(cvar_dataframe)
+            st.dataframe(fund_results_dataframe)
+
+with tab6:
+    if "dataframe" not in st.session_state:
+        st.info("Load data first ⬅️")
+    else:
+        
+        dataframe = st.session_state.dataframe
+        returns_to_use = st.session_state.returns_to_use
+        market_tickers=[t for t in tickers if t in dataframe.columns]
+
+            
+        max_value = dataframe.index.max().strftime('%Y-%m-%d')
+        min_value = dataframe.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
+        value=(min_value,max_value)
+
+        
+        Model5 = st.slider(
+        'Date:',
+        min_value=min_value,
+        max_value=max_value,
+        value=value,key='tab6')
+    
+        selmin, selmax = Model5
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        
+        mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+        
+        range_prices=dataframe.loc[mask].copy()
+        range_returns=returns_to_use.loc[mask].copy()
+
+        num_components=st.number_input("PCA Components:",min_value=1,value=1,max_value=range_returns.shape[1]+1)
+        num_closest_to_pca=st.number_input("Closest to PCA:",min_value=1,value=2,max_value=range_returns.shape[1]+1)
+        portfolio=RiskAnalysis(range_returns)
+        
+
+        eigval,eigvec,portfolio_components=portfolio.pca(num_components=num_components)
+        selected_components=st.selectbox("Select PCA:", list(portfolio_components.columns),index=0,key='selected_pca')
+        
+        variance_explained=eigval/eigval.sum()
+        variance_explained_dataframe=pd.DataFrame(variance_explained,index=portfolio_components.columns,columns=['Variance Explained'])
+        
+        pca_weight=dict((portfolio_components[selected_components]/(portfolio_components[selected_components]).sum()))
+        pca_portfolio=pd.DataFrame(portfolio_components[selected_components]).sort_values(by=selected_components,ascending=False)
+        
+        historical_PCA=pd.DataFrame(np.array(list(pca_weight.values())).dot(np.transpose(portfolio.returns)),index=portfolio.returns.index,columns=['PCA'])
+        historical_PCA=historical_PCA.dropna()
+    
+        comparison=portfolio.returns.copy()
+        comparison['PCA']=historical_PCA
+        distances=np.sqrt(np.sum(comparison.apply(lambda y:(y-historical_PCA['PCA'])**2),axis=0)).sort_values()
+        pca_similarity=(1+comparison[distances.index[:num_closest_to_pca]]).cumprod()
+
+
+        fig=px.bar(variance_explained_dataframe,title='Variance Explanation in %')
+        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
+        fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+
+        fig2=px.bar(pca_portfolio,title='Eigen Weights')
+        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400) 
+        fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        
+        fig3=px.line((1+historical_PCA).cumprod(),title='Eigen Index')
+        fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
+        fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
+
+        fig4=px.line(pca_similarity,title='PCA Similarity')
+        fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
+        fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        
+        st.plotly_chart(fig)
+        st.plotly_chart(fig2)
+        st.plotly_chart(fig3)
+        st.plotly_chart(fig4)
+
+with tab7:
+    
+    if "dataframe" not in st.session_state:
+        st.info("Load data first ⬅️")
+    else:
+        
+        dataframe = st.session_state.dataframe
+        returns_to_use = st.session_state.returns_to_use
+        market_tickers=[t for t in tickers if t in dataframe.columns]
+
+            
+        max_value = dataframe.index.max().strftime('%Y-%m-%d')
+        min_value = dataframe.index.min().strftime('%Y-%m-%d')
+        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
+        value=(min_value,max_value)
+
+        
+        Model6 = st.slider(
+        'Date:',
+        min_value=min_value,
+        max_value=max_value,
+        value=value,key='tab7')
+    
+        selmin, selmax = Model6
+        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = selmax.strftime('%Y-%m-%d')
+        dropdown_asset1=st.selectbox("Asset 1:",options=range_returns.columns,index=0)
+        dropdown_asset2=st.selectbox("Asset 2:",options=range_returns.columns,index=1)
+
+        window_corr=st.number_input("Window Correlation",min_value=0,value=252)
+        mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+
+        
+        range_prices=dataframe.loc[mask].copy()
+        range_returns=returns_to_use.loc[mask].copy()
+
+        pca_over_time=first_pca_over_time(returns=range_returns,window=window_corr)
+
+        rolling_correlation = range_returns[dropdown_asset1].rolling(window_corr).corr(
+            range_returns[dropdown_asset2]
+        ).dropna()
+        
+        fig = px.line(rolling_correlation, title=f"{dropdown_asset1}/{dropdown_asset2} Correlation")
+        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
+        fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+
+
+        fig2 = px.imshow(range_returns.corr().round(2), title='Correlation Matrix',color_continuous_scale='blues', text_auto=True, aspect="auto")
+        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
+        fig2.update_traces(xgap=2, ygap=2)
+        fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        
+        fig3=px.line(pca_over_time,title='First principal component (Variance Explained in %)')
+        fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
+        fig3.update_layout(xaxis_title=None, yaxis_title=None)
+
+        st.plotly_chart(fig)
+        st.plotly_chart(fig2)
+        st.plotly_chart(fig3)
