@@ -1,5 +1,5 @@
 Apps:
 
-https://cryptominimumvariance.streamlit.app
+https://cryptoptimization.streamlit.app
 
 https://optimisationapp.streamlit.app
