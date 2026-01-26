@@ -52,7 +52,6 @@ def variance_decomposition_ex_post(quantities,prices):
 
 def first_pca_over_time(returns,window=252):
     dico = {}
-    window=30
     for i in range(0, returns.shape[0], window):
         temp = returns.iloc[i:i+window]
         index=temp.index[-1]
