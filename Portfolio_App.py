@@ -142,7 +142,7 @@ if uploaded_file:
         minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
         risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
         max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
-        equal_weights = np.ones(returns_to_use.shape[1]) / returns_to_use.shape[1]
+        equal_weights = np.ones(returns.shape[1]) / returns.shape[1]
 
         st.subheader("Optimized Weights")
 
