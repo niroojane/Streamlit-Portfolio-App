@@ -80,8 +80,9 @@ with tab1:
         value=20,     
         step=1           
     )
-    tickers=get_market_cap()['Ticker'].iloc[:selected_number].to_list()
-    market_cap_table=get_market_cap()[['Long name','Ticker','Market Cap','Supply']].set_index('Ticker').iloc[:selected_number]
+    tickers_market_cap=Binance.get_market_cap()
+    tickers=tickers_market_cap['Ticker'].iloc[:selected_number].to_list()
+    market_cap_table=tickers_market_cap.iloc[:selected_number].set_index('Ticker')
     selected = st.multiselect("Select Crypto:", tickers,default=tickers)
     
     st.dataframe(market_cap_table)
