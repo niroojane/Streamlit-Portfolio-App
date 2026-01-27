@@ -11,4 +11,3 @@ seaborn>=0.13.2
 statsmodels>=0.14.4
 streamlit>=1.45.1
 yfinance>=0.2.66
-openpyxl>=1.0
