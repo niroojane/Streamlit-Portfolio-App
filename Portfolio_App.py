@@ -142,6 +142,7 @@ if uploaded_file:
         minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
         risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
         max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
+        equal_weights = np.ones(returns_to_use.shape[1]) / returns_to_use.shape[1]
 
         st.subheader("Optimized Weights")
 
@@ -163,7 +164,7 @@ if uploaded_file:
         
         allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
         allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-
+        allocation['Equal Weighted']=equal_weights.tolist()
 
         allocation_dataframe=pd.DataFrame(allocation,index=returns.columns).T.round(6)
         

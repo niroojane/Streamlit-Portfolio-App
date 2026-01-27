@@ -256,7 +256,8 @@ with tab2:
         minvar_weights = portfolio.optimize(objective="minimum_variance")
         risk_parity_weights = portfolio.optimize(objective="risk_parity")
         max_diversification=portfolio.optimize(objective="maximum_diversification")
-        
+        equal_weights = np.ones(returns_to_use.shape[1]) / returns_to_use.shape[1]
+
         allocation['Optimal Portfolio']=optimized_weights.tolist()
         allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
 
@@ -268,7 +269,7 @@ with tab2:
         
         allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
         allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-
+        allocation['Equal Weighted']=equal_weights.tolist()
         
         
         allocation_dataframe = pd.DataFrame(
