@@ -505,6 +505,7 @@ with main_tabs[2]:
         st.info("Compute Optimization first ⬅️")
 
     else:
+        
         sub_tabs_risk=st.tabs(['Risk Analysis','Value At Risk'])
         with sub_tabs_risk[0]:
             
@@ -512,10 +513,7 @@ with main_tabs[2]:
             returns_to_use = st.session_state.returns_to_use
             res=st.session_state.results
             allocation_dataframe=res["alloc_df"]
-            
-            st.subheader("Allocation")
-            
-            st.dataframe(allocation_dataframe)   
+
             
             max_value = dataframe.index.max().strftime('%Y-%m-%d')
             min_value = dataframe.index.min().strftime('%Y-%m-%d')
@@ -539,7 +537,13 @@ with main_tabs[2]:
             range_prices=dataframe.loc[mask].copy()
             range_returns=returns_to_use.loc[mask].copy()
     
-            portfolio = RiskAnalysis(range_returns)    
+            portfolio = RiskAnalysis(range_returns)                
+            
+            st.subheader("Allocation")
+            
+            st.dataframe(allocation_dataframe)   
+            
+
             
             st.subheader("Risk Decomposition")
     
