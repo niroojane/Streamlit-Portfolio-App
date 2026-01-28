@@ -739,12 +739,10 @@ with tab6:
         range_prices=dataframe.loc[mask].copy()
         range_returns=returns_to_use.loc[mask].copy()
 
-        num_components=st.number_input("PCA Components:",min_value=1,value=1,max_value=range_returns.shape[1]+1)
-        num_closest_to_pca=st.number_input("Closest to PCA:",min_value=1,value=2,max_value=range_returns.shape[1]+1)
-        portfolio=RiskAnalysis(range_returns)
-        
-
+        num_components=st.number_input("PCA Components:",min_value=1,value=range_returns.shape[1]//2,max_value=range_returns.shape[1]+1)
         eigval,eigvec,portfolio_components=portfolio.pca(num_components=num_components)
+        
+        num_closest_to_pca=st.number_input("Closest to PCA:",min_value=1,value=min(5,range_returns.shape[1]),max_value=range_returns.shape[1]+1)
         selected_components=st.selectbox("Select PCA:", list(portfolio_components.columns),index=0,key='selected_pca')
         
         variance_explained=eigval/eigval.sum()
