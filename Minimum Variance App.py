@@ -450,7 +450,7 @@ with main_tabs[1]:
                 st.subheader("Expected Returns")
                 st.dataframe(res['frontier_indicators'])
 
-                st.subheader("Systematic Fund Metric")
+                st.subheader("Systematic Fund Metrics")
                 st.dataframe(res["indicators"])
                 
                 st.subheader("Backtested Metrics")
@@ -488,9 +488,16 @@ with main_tabs[1]:
                 allocation_dataframe=res['alloc_df']
                 cumulative_results=st.session_state.results['cumulative_results']
                 
-                selected_frequency_calendar = st.selectbox("Rebalancing Frequency:", rebalancing_frequency,index=1,key='selected_frequency_calendar')
-                fund_calendar=st.selectbox("Fund:", list(cumulative_results.columns),index=0,key='fund_calendar')
-                benchmark_calendar=st.selectbox("Benchmark:", list(cumulative_results.columns),index=1,key='benchmark_calendar')
+                col1, col2, col3 = st.columns([1, 1, 1])
+            
+                with col1:
+                    selected_frequency_calendar = st.selectbox("Frequency:", rebalancing_frequency,index=1,key='selected_frequency_calendar')
+        
+                with col2:
+                    fund_calendar=st.selectbox("Fund:", list(cumulative_results.columns),index=0,key='fund_calendar')
+                            
+                with col3:
+                    benchmark_calendar=st.selectbox("Benchmark:", list(cumulative_results.columns),index=1,key='benchmark_calendar')
         
                 if benchmark_calendar==fund_calendar:
                     st.info("Benchmark and Fund must be different ⬅️")
