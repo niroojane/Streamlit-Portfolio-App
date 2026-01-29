@@ -445,9 +445,15 @@ with main_tabs[1]:
                 st.dataframe(res["rolling_optimization"])
                 st.subheader("Allocation Table")
                 st.dataframe(res["alloc_df"])
-            
-                st.subheader("Metrics")
+
+                
+                st.subheader("Expected Returns")
+                st.dataframe(res['frontier_indicators'])
+
+                st.subheader("Systematic Fund Metric")
                 st.dataframe(res["indicators"])
+                
+                st.subheader("Backtested Metrics")
                 st.dataframe(rebalanced_metrics(res['cumulative_results']))
                 st.dataframe(get_portfolio_risk(res["alloc_df"], range_prices, res['cumulative_results'], benchmark_tracking_error))
         
@@ -543,18 +549,25 @@ with main_tabs[2]:
             
             st.dataframe(allocation_dataframe)   
             
-
             
             st.subheader("Risk Decomposition")
+            
+            col1, col2, col3 = st.columns([1, 1, 1])
+        
+            with col1:
+                fund_risk=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='fund_risk')
     
-            fund_risk=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='fund_risk')
-            benchmark_risk=st.selectbox("Benchmark:", list(allocation_dataframe.index),index=1,key='benchmark_risk')
+            with col2:
+                benchmark_risk=st.selectbox("Benchmark:", list(allocation_dataframe.index),index=1,key='benchmark_risk')
+
+            with col3:
+                frequency_pnl=st.selectbox("Rebalancing Frequency:", ['Yearly','Quarterly','Monthly'],index=1,key='frequency_pnl')
             
             selected_weights = allocation_dataframe.loc[fund_risk]
             
             decomposition = pd.DataFrame(portfolio.var_contrib_pct(selected_weights))*100
             
-            quantities_rebalanced = rebalanced_portfolio(range_prices, selected_weights) / range_prices
+            quantities_rebalanced = rebalanced_portfolio(range_prices, selected_weights,frequency=frequency_pnl) / range_prices
             quantities_buy_hold = buy_and_hold(range_prices, selected_weights) / range_prices
             
             cost_rebalanced = rebalanced_book_cost(range_prices, quantities_rebalanced)
@@ -756,12 +769,18 @@ with main_tabs[3]:
     
             portfolio=RiskAnalysis(range_returns)
             
-            num_components=st.number_input("PCA Components:",min_value=1,value=min(5,range_returns.shape[1]),max_value=range_returns.shape[1]+1)
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                num_components=st.number_input("PCA Components:",min_value=1,value=min(5,range_returns.shape[1]),max_value=range_returns.shape[1]+1)
     
             eigval,eigvec,portfolio_components=portfolio.pca(num_components=num_components)
-            num_closest_to_pca=st.number_input("Closest to PCA:",min_value=1,value=min(5,range_returns.shape[1]),max_value=range_returns.shape[1]+1)
-    
-            selected_components=st.selectbox("Select PCA:", list(portfolio_components.columns),index=0,key='selected_pca')
+
+            with col2:
+                selected_components=st.selectbox("Select PCA:", list(portfolio_components.columns),index=0,key='selected_pca')
+                        
+            with col3:
+                num_closest_to_pca=st.number_input("Closest to PCA:",min_value=1,value=min(5,range_returns.shape[1]),max_value=range_returns.shape[1]+1)
             
             variance_explained=eigval/eigval.sum()
             variance_explained_dataframe=pd.DataFrame(variance_explained,index=portfolio_components.columns,columns=['Variance Explained'])
@@ -823,11 +842,17 @@ with main_tabs[3]:
             selmin, selmax = Model6
             selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
             selmaxd = selmax.strftime('%Y-%m-%d')
-            dropdown_asset1=st.selectbox("Asset 1:",options=range_returns.columns,index=0)
-            dropdown_asset2=st.selectbox("Asset 2:",options=range_returns.columns,index=1)
+            
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                dropdown_asset1=st.selectbox("Asset 1:",options=range_returns.columns,index=0)
     
-            window_corr=st.number_input("Window Correlation",min_value=0,value=252)
-            mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+            with col2:
+                dropdown_asset2=st.selectbox("Asset 2:",options=range_returns.columns,index=1)
+                        
+            with col3:
+                window_corr=st.number_input("Window Correlation",min_value=0,value=252)
     
             
             range_prices=dataframe.loc[mask].copy()
