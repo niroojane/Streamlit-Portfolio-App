@@ -420,10 +420,19 @@ with main_tabs[1]:
                 
             if st.session_state.results is not None:
                 
+                selmin, selmax = st.session_state['strategy_tab']
+                selmind = selmin.strftime('%Y-%m-%d') 
+                selmaxd = selmax.strftime('%Y-%m-%d')
+                
                 res=st.session_state.results
+                mask = (res['cumulative_results'].index >= selmind) & (res['cumulative_results'].index <= selmaxd)
+
+                res=st.session_state.results
+                
                 cumulative_performance=res['cumulative_results'].loc[mask].pct_change()
                 cumulative_performance.iloc[0] = 0
                 cumulative_results = (1 + cumulative_performance).cumprod() * 100
+                
                 drawdown = (cumulative_results - cumulative_results.cummax()) / cumulative_results.cummax()
                 rolling_vol_ptf = cumulative_results.pct_change().rolling(window_vol).std() * np.sqrt(260)
                 
