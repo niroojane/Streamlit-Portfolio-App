@@ -23,6 +23,19 @@ from Rebalancing import *
 from Metrics import *
 
 
+st.set_page_config(layout="wide")
+
+st.markdown(
+    """
+    <style>
+    /* Global font override */
+    html, body, .stApp, [class*="css"]  {
+        font-family: "Arial Narrow", Arial, sans-serif !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=None):
     if today is None:
@@ -71,8 +84,6 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=None):
 
 main_tabs=st.tabs(["Investment Universe","Strategy","Risk Analysis","Market Risk"])
     
-# investment_tab,strategy_tab,calendar_tab,ex_post_tab,risk_tab,var_tab,market_tab,correlation_tab = st.tabs(["Investment Universe", "Strategy","Strategy Return",'Ex Post',"Risk Contribution","Value at Risk","Market Risk","Correlation"])
-
 
 with main_tabs[0]:
     
@@ -83,9 +94,13 @@ with main_tabs[0]:
         value=20,     
         step=1           
     )
+
+    
     tickers_market_cap=get_market_cap()
-    tickers=tickers_market_cap['Ticker'].iloc[:selected_number].to_list()
     market_cap_table=tickers_market_cap.iloc[:selected_number].set_index('Ticker')
+
+    tickers=tickers_market_cap['Ticker'].iloc[:selected_number].to_list()
+    
     selected = st.multiselect("Select Crypto:", tickers,default=tickers)
     
     st.dataframe(market_cap_table)
@@ -97,7 +112,7 @@ with main_tabs[0]:
            
     if price_button:
         with st.spinner("Loading market data...",show_time=True):
-            load_data(tickers,dt)
+            load_data(selected,dt)
             st.success("Done!")
             
     if "dataframe" not in st.session_state:
@@ -120,26 +135,25 @@ with main_tabs[0]:
             value=value,key='investment_tab')
         
         selmin, selmax = Model
-        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+        selmind = selmin.strftime('%Y-%m-%d')
         selmaxd = selmax.strftime('%Y-%m-%d')
         
-        # Filter data by selected date range
         mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
         
         asset_returns=get_asset_returns(dataframe.loc[mask])
         asset_risk=get_asset_risk(dataframe.loc[mask])
         
-        st.dataframe(dataframe.loc[mask])
+        st.dataframe(dataframe.loc[mask],use_container_width=True)
     
-        st.dataframe(asset_returns)
-        st.dataframe(asset_risk)
+        st.dataframe(asset_returns,use_container_width=True)
+        st.dataframe(asset_risk,use_container_width=True)
         
         fig = px.line(dataframe.loc[mask], title='Price', width=800, height=400)
         fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
         fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
         fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
-    
-        st.plotly_chart(fig)
+        
+
 
         cumulative_returns=returns_to_use.loc[mask].copy()
         cumulative_returns.iloc[0]=0
@@ -149,12 +163,14 @@ with main_tabs[0]:
         fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
         fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
         fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
-    
-        st.plotly_chart(fig2)
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.plotly_chart(fig,use_container_width=False)
+        with col2:
+            st.plotly_chart(fig2,use_container_width=False)
 
 with main_tabs[1]:
 
-    
     dico_strategies = {
     'Minimum Variance': 'minimum_variance',
     'Risk Parity': 'risk_parity',
@@ -185,10 +201,9 @@ with main_tabs[1]:
                 value=value,key='strategy_tab')
         
             selmin, selmax = Model2
-            selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+            selmind = selmin.strftime('%Y-%m-%d') 
             selmaxd = selmax.strftime('%Y-%m-%d')
             
-            # Filter data by selected date range
             mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
             
             range_prices=dataframe.loc[mask].copy()
@@ -199,9 +214,8 @@ with main_tabs[1]:
             asset_returns=get_asset_returns(range_prices)
             asset_risk=get_asset_risk(range_prices)
             
-            st.dataframe(asset_returns)
-            st.dataframe(asset_risk)
-                    
+            st.dataframe(asset_returns,use_container_width=True)
+            st.dataframe(asset_risk,use_container_width=True)
         
             st.subheader("Constraints")  
                     
@@ -210,20 +224,21 @@ with main_tabs[1]:
             'Limit':[None]
             })
             drop_down_list=list(range_returns.columns)+['All']
+            
             # Define dropdown options for the 'Risk Level' column
             column_config = {'Asset':st.column_config.SelectboxColumn(
                 options=drop_down_list),
             'Sign': st.column_config.SelectboxColumn(
-                options=["=", "≥", "≤"],  # Dropdown options
-                help="Select the risk level for each asset."  # Tooltip for the column
+                options=["=", "≥", "≤"],
+                help="Select the risk level for each asset." 
             )
             }
+
             
-            # Create the editable data editor with dropdown
             editable_data = st.data_editor(
             data,
             column_config=column_config,
-            num_rows="dynamic",  # Allow rows to be added dynamically
+            num_rows="dynamic",
             )
         
             constraint_matrix=editable_data.to_numpy()
@@ -248,12 +263,9 @@ with main_tabs[1]:
                         
                     constraints.extend(constraint)
                     
-            
             except Exception as e:
                 pass
-    
-    
-    
+        
             st.subheader("Portfolio Construction")
     
             allocation={}
@@ -282,12 +294,10 @@ with main_tabs[1]:
             allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
             allocation['Equal Weighted']=equal_weights.tolist()
             
-            
             allocation_dataframe = pd.DataFrame(
                     allocation,
                     index=dataframe.columns
                 ).T.round(6)
-            
             
             st.session_state.allocation_dataframe = st.data_editor(
                 allocation_dataframe,
@@ -298,15 +308,14 @@ with main_tabs[1]:
             rebalancing_frequency = ['Monthly', 'Quarterly', 'Yearly']
             
             selected_strategy = st.selectbox("Strategy:", options_strat, index=0)
-            selected_frequency = st.selectbox("Rebalancing Frequency:", rebalancing_frequency, index=0)
             benchmark_tracking_error = st.selectbox("Benchmark:", list(allocation_dataframe.index), index=0)
+            selected_frequency = st.selectbox("Rebalancing Frequency:", rebalancing_frequency, index=0)
             window_vol = st.number_input("Sliding Window Size:", min_value=1, value=252, step=1)
             
             if "run_optimization" not in st.session_state:
                 st.session_state.run_optimization = False
             if "results" not in st.session_state:
                 st.session_state.results = None
-            
         
             if st.button("Run Optimization"):
                 st.session_state.run_optimization = True
@@ -402,7 +411,6 @@ with main_tabs[1]:
         
                 frontier_indicators, fig4 = get_frontier(range_returns, alloc_df)
         
-        
                 fig = px.line(cumulative_results, title='Performance', width=800, height=400)
                 fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
                 fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
@@ -412,13 +420,11 @@ with main_tabs[1]:
                 fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
                 fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
-        
             
                 fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
                 fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
-            
         
                 fig4.update_layout(width=800, height=400,title={'text': "Efficient Frontier"})
                 fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))    
@@ -440,43 +446,43 @@ with main_tabs[1]:
                 }
             if st.session_state.results is not None:
                 res = st.session_state.results
-            
+                
                 st.subheader("Weights Matrix")
-                st.dataframe(res["rolling_optimization"])
+                st.dataframe(res["rolling_optimization"],use_container_width=True)
                 st.subheader("Allocation Table")
-                st.dataframe(res["alloc_df"])
-
+                st.dataframe(res["alloc_df"],use_container_width=True)
                 
                 st.subheader("Expected Returns")
-                st.dataframe(res['frontier_indicators'])
+                st.dataframe(res['frontier_indicators'],use_container_width=True)
 
                 st.subheader("Systematic Fund Metrics")
-                st.dataframe(res["indicators"])
+                st.dataframe(res["indicators"],use_container_width=True)
                 
                 st.subheader("Backtested Metrics")
-                st.dataframe(rebalanced_metrics(res['cumulative_results']))
-                st.dataframe(get_portfolio_risk(res["alloc_df"], range_prices, res['cumulative_results'], benchmark_tracking_error))
+                st.dataframe(rebalanced_metrics(res['cumulative_results']),use_container_width=True)
+                st.dataframe(get_portfolio_risk(res["alloc_df"], range_prices, res['cumulative_results'], benchmark_tracking_error),use_container_width=True)
         
                 st.subheader("Charts")
-                if "fig_performance" in res:
-                    st.plotly_chart(res["fig_performance"], use_container_width=True)
-                if "fig_drawdown" in res:
-                    st.plotly_chart(res["fig_drawdown"], use_container_width=True)
-                if "fig_rolling_vol" in res:
-                    st.plotly_chart(res["fig_rolling_vol"], use_container_width=True)
-                if "fig_frontier" in res:
-                    st.plotly_chart(res["fig_frontier"], use_container_width=True)
+                col1, col2 = st.columns([1, 1])
+
+                with col1:
+                    if "fig_performance" in res:
+                        st.plotly_chart(res["fig_performance"], use_container_width=False)
+                    if "fig_drawdown" in res:
+                        st.plotly_chart(res["fig_drawdown"], use_container_width=False)
+                with col2:
+                    if "fig_rolling_vol" in res:
+                        st.plotly_chart(res["fig_rolling_vol"], use_container_width=False)
+                    if "fig_frontier" in res:
+                        st.plotly_chart(res["fig_frontier"], use_container_width=False)
                     
                 st.subheader("Time Series")
-                st.dataframe(res["cumulative_results"])
+                st.dataframe(res["cumulative_results"],use_container_width=True)
             else:
                 st.info("Compute Optimization first ⬅️")
 
         
         with sub_tabs[1]:
-            
-            # if "dataframe" not in st.session_state:
-            #     st.info("Load data first ⬅️")
             
             if st.session_state.results is None:
                 st.info("Compute Optimization first ⬅️")
@@ -498,6 +504,7 @@ with main_tabs[1]:
                             
                 with col3:
                     benchmark_calendar=st.selectbox("Benchmark:", list(cumulative_results.columns),index=1,key='benchmark_calendar')
+                    
         
                 if benchmark_calendar==fund_calendar:
                     st.info("Benchmark and Fund must be different ⬅️")
@@ -506,9 +513,18 @@ with main_tabs[1]:
                                        freq=selected_frequency_calendar, 
                                        benchmark=benchmark_calendar, 
                                        fund=fund_calendar)
-                    for name, fig in graphs.items():
-                        st.plotly_chart(fig, use_container_width=True, key=f"plot_{name}")
 
+                
+                col1, col2 = st.columns([1, 1])
+                keys=list(graphs.keys())
+                with col1:
+                    st.plotly_chart(graphs[keys[0]], use_container_width=False, key=f"plot_{keys[0]}")
+                    st.plotly_chart(graphs[keys[1]], use_container_width=False, key=f"plot_{keys[1]}")
+                with col2:
+                    st.plotly_chart(graphs[keys[2]], use_container_width=False, key=f"plot_{keys[2]}")
+                    st.plotly_chart(graphs[keys[3]], use_container_width=False, key=f"plot_{keys[3]}")           
+
+        
 with main_tabs[2]: 
     
     if "dataframe" not in st.session_state:
@@ -518,7 +534,6 @@ with main_tabs[2]:
         st.info("Compute Optimization first ⬅️")
 
     else:
-        
         sub_tabs_risk=st.tabs(['Risk Analysis','Value At Risk'])
         with sub_tabs_risk[0]:
             
@@ -526,15 +541,15 @@ with main_tabs[2]:
             returns_to_use = st.session_state.returns_to_use
             res=st.session_state.results
             allocation_dataframe=res["alloc_df"]
-
             
             max_value = dataframe.index.max().strftime('%Y-%m-%d')
             min_value = dataframe.index.min().strftime('%Y-%m-%d')
+            
             max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
             min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+            
             value=(min_value,max_value)
             
-    
             Model3 = st.slider(
                 'Date:',
                 min_value=min_value,
@@ -554,8 +569,7 @@ with main_tabs[2]:
             
             st.subheader("Allocation")
             
-            st.dataframe(allocation_dataframe)   
-            
+            st.dataframe(allocation_dataframe,use_container_width=True)
             
             st.subheader("Risk Decomposition")
             
@@ -608,15 +622,12 @@ with main_tabs[2]:
             
             ex_ante_dataframe = pd.DataFrame(data)
     
-    
-            st.dataframe(profit_and_loss_simulated)
-    
+            st.dataframe(profit_and_loss_simulated,use_container_width=True)    
             st.subheader("Ex Ante Metrics")
     
-            st.dataframe(ex_ante_dataframe)
+            st.dataframe(ex_ante_dataframe,use_container_width=True)
 
         with sub_tabs_risk[1]:
-        
         
             dataframe = st.session_state.dataframe
             returns_to_use = st.session_state.returns_to_use
@@ -654,7 +665,6 @@ with main_tabs[2]:
         
             selected_fund_var=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='selected_fund_var')
     
-        
             horizon = 1 / 250
             spot = dataframe.iloc[-1]
             theta = 2
@@ -733,12 +743,11 @@ with main_tabs[2]:
             
                 fund_results_dataframe = pd.DataFrame(fund_results).T
                 
-                st.dataframe(var_dataframe)
-                st.dataframe(cvar_dataframe)
-                st.dataframe(fund_results_dataframe)
+                st.dataframe(var_dataframe,use_container_width=True)
+                st.dataframe(cvar_dataframe,use_container_width=True)
+                st.dataframe(fund_results_dataframe,use_container_width=True)
 
 with main_tabs[3]:
-    
     
     if "dataframe" not in st.session_state:
         st.info("Load data first ⬅️")
@@ -751,13 +760,11 @@ with main_tabs[3]:
             returns_to_use = st.session_state.returns_to_use
             market_tickers=[t for t in tickers if t in dataframe.columns]
     
-                
             max_value = dataframe.index.max().strftime('%Y-%m-%d')
             min_value = dataframe.index.min().strftime('%Y-%m-%d')
             max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
             min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
             value=(min_value,max_value)
-    
             
             Model5 = st.slider(
             'Date:',
@@ -788,7 +795,7 @@ with main_tabs[3]:
                         
             with col3:
                 num_closest_to_pca=st.number_input("Closest to PCA:",min_value=1,value=min(5,range_returns.shape[1]),max_value=range_returns.shape[1]+1)
-            
+
             variance_explained=eigval/eigval.sum()
             variance_explained_dataframe=pd.DataFrame(variance_explained,index=portfolio_components.columns,columns=['Variance Explained'])
             
@@ -820,26 +827,27 @@ with main_tabs[3]:
             fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
             fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
-            st.plotly_chart(fig)
-            st.plotly_chart(fig2)
-            st.plotly_chart(fig3)
-            st.plotly_chart(fig4)
+            with col1:
+                st.plotly_chart(fig,use_container_width=False)
+            with col2:
+                st.plotly_chart(fig2,use_container_width=False)
+                st.plotly_chart(fig4,use_container_width=False)
 
+            with col3:
+                st.plotly_chart(fig3,use_container_width=False)
+            
         with sub_tabs_market[1]:
       
-            
             dataframe = st.session_state.dataframe
             returns_to_use = st.session_state.returns_to_use
             market_tickers=[t for t in tickers if t in dataframe.columns]
     
-                
             max_value = dataframe.index.max().strftime('%Y-%m-%d')
             min_value = dataframe.index.min().strftime('%Y-%m-%d')
             max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
             min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
             value=(min_value,max_value)
     
-            
             Model6 = st.slider(
             'Date:',
             min_value=min_value,
@@ -847,20 +855,16 @@ with main_tabs[3]:
             value=value,key='correlation_tab')
         
             selmin, selmax = Model6
-            selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+            selmind = selmin.strftime('%Y-%m-%d') 
             selmaxd = selmax.strftime('%Y-%m-%d')
-            
+
+            dropdown_asset1=st.selectbox("Asset 1:",options=range_returns.columns,index=0)
+            dropdown_asset2=st.selectbox("Asset 2:",options=range_returns.columns,index=1)
+            window_corr=st.number_input("Window Correlation",min_value=0,value=252)
+    
+            mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
             col1, col2, col3 = st.columns([1, 1, 1])
-            
-            with col1:
-                dropdown_asset1=st.selectbox("Asset 1:",options=range_returns.columns,index=0)
-    
-            with col2:
-                dropdown_asset2=st.selectbox("Asset 2:",options=range_returns.columns,index=1)
-                        
-            with col3:
-                window_corr=st.number_input("Window Correlation",min_value=0,value=252)
-    
+
             
             range_prices=dataframe.loc[mask].copy()
             range_returns=returns_to_use.loc[mask].copy()
@@ -884,7 +888,10 @@ with main_tabs[3]:
             fig3=px.line(pca_over_time,title='First principal component (Variance Explained in %)')
             fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
             fig3.update_layout(xaxis_title=None, yaxis_title=None)
-    
-            st.plotly_chart(fig)
-            st.plotly_chart(fig2)
-            st.plotly_chart(fig3)
+
+            with col1:
+                st.plotly_chart(fig,use_container_width=False)
+            with col2:
+                st.plotly_chart(fig3,use_container_width=False)
+            with col3:
+                st.plotly_chart(fig2,use_container_width=False)
