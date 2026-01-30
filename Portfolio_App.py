@@ -15,6 +15,20 @@ import datetime
 from RiskMetrics import Portfolio, RiskAnalysis,create_constraint,diversification_constraint
 from Rebalancing import *
 
+st.set_page_config(layout="wide")
+
+st.markdown(
+    """
+    <style>
+    /* Global font override */
+    html, body, .stApp, [class*="css"]  {
+        font-family: "Arial Narrow", Arial, sans-serif !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("Portfolio Optimization App")
 
 # File Upload
@@ -67,7 +81,7 @@ if uploaded_file:
                   'Returns since '+datetime.datetime(max(prices.index.year), 1, 1).strftime("%Y-%m-%d"),
                   'Annualized Returns']
     
-        st.dataframe(perfs.T)
+        st.dataframe(perfs.T,width='stretch')
         
         st.subheader("Asset Risk")
         
@@ -83,7 +97,7 @@ if uploaded_file:
         risk=pd.concat([vol,monthly_vol,cvar,drawdown,dates_drawdown],axis=1).round(4)
         risk.columns=['Annualized Volatility (daily)','Annualized Volatility (Monthly)','CVar Parametric '+str(int((1-Q)*100))+'%','Max Drawdown','Date of Max Drawdown']
     
-        st.dataframe(risk.T)
+        st.dataframe(risk.T,width='stretch')
         
         st.title("Portfolio Construction")
         
@@ -109,8 +123,8 @@ if uploaded_file:
         editable_data = st.data_editor(
         data,
         column_config=column_config,
-        num_rows="dynamic",  # Allow rows to be added dynamically
-        )
+        num_rows="dynamic")  # Allow rows to be added dynamically
+   
     
         constraint_matrix=editable_data.to_numpy()
         constraints=[]
@@ -205,7 +219,7 @@ if uploaded_file:
         
         st.subheader("Portfolio Metrics")
         
-        st.dataframe(indicators.T)
+        st.dataframe(indicators.T,width='stretch')
    
     # Convert the index to datetime and clean the data
 
@@ -236,7 +250,7 @@ if uploaded_file:
 
         st.subheader("Performance")
     
-        st.dataframe(perfs.T)
+        st.dataframe(perfs.T,width='stretch')
         
         st.subheader("Risk")
             
@@ -274,19 +288,20 @@ if uploaded_file:
                       'CVar Parametric '+str(int((1-Q)*100))+'%',
                       'Max Drawdown','Date of Max Drawdown']
     
-        st.dataframe(risk.T)
+        st.dataframe(risk.T,width='stretch')
         
         st.subheader("Portfolio Value Evolution")
-    
         
+            
         fig = px.line(portfolio_returns, title="Portfolio Value Evolution").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
-        st.plotly_chart(fig)
-
+        st.plotly_chart(fig,width='stretch')
+        
         fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
-        st.plotly_chart(fig2)
-
+        st.plotly_chart(fig2,width='stretch')
+        
         fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
-        st.plotly_chart(fig3)
+
+        st.plotly_chart(fig3,width='stretch')
         
         st.write(portfolio_returns)
 
@@ -385,7 +400,9 @@ if uploaded_file:
         optimal_results['Current Maximum Diversification Portfolio Constrained']=max_diversification_weights_constraint.tolist()
         optimal_results['Current Risk Parity Portfolio']=risk_parity_weights.tolist()
         optimal_results['Current Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-
+        optimal_results['Current Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
+        optimal_results['Equal Weights']=equal_weights.tolist()
+        
         former_results={}
         
         for idx in allocation_dataframe.index:
@@ -399,7 +416,7 @@ if uploaded_file:
 
         st.subheader("Results since Inception")
 
-        editable_weights = st.data_editor(former_results, num_rows="dynamic")
+        editable_weights = st.data_editor(former_results, num_rows="dynamic",width='stretch')
 
         st.subheader("Results with current timeframe")
 
@@ -468,19 +485,30 @@ if uploaded_file:
                 y=[metrics["Returns"][key]],
                 mode="markers",
                 marker=dict(color="orange", size=8, symbol="x"),
-                name=key,
-            )
-    
-        fig.update_layout(showlegend=False)
-        fig.update_layout(hoverlabel_namelength=-1)
-        st.plotly_chart(fig)
+                name=key)
+            
+        col1,col2=st.columns([1,1])
+        with col1:
+            st.subheader('Efficient Frontier')
 
+            fig.update_layout(showlegend=False)
+            fig.update_layout(hoverlabel_namelength=-1)
+            st.plotly_chart(fig,width='content')
+
+        with col2:
+            st.subheader('Correlation Matrix')
+            fig = px.imshow(returns.corr().round(2),color_continuous_scale='blues',text_auto=True, aspect="auto")
+            fig.update_traces(xgap=2, ygap=2)
+            fig.update_traces(textfont=dict(family="Arial Narrow", size=12))
+    
+            st.plotly_chart(fig,width='content')
+        
         indicators = pd.DataFrame(metrics,index=weight_matrix.keys())
 
 
         st.subheader("Expected Return")
         
-        st.dataframe(indicators.T)
+        st.dataframe(indicators.T,width='stretch')
         
         st.subheader("Risk Reward Decomposition")
         
@@ -512,15 +540,7 @@ if uploaded_file:
         pnl=pd.concat([pnl_buy_and_hold,pnl_rebalanced,decomposition],axis=1)
         pnl.loc['Total']=pnl.sum(axis=0)
         
-        st.dataframe(pnl.fillna(0).sort_values(by='Profit and Loss (Rebalanced)',ascending=False))
+        st.dataframe(pnl.fillna(0).sort_values(by='Profit and Loss (Rebalanced)',ascending=False),width='stretch')
 
 
-        st.subheader("Correlation Matrix")
-        
-    
-        fig = px.imshow(returns.corr().round(2),color_continuous_scale='blues',text_auto=True, aspect="auto")
-        fig.update_traces(xgap=2, ygap=2)
-        fig.update_traces(textfont=dict(family="Arial Narrow", size=12))
-        
-        st.plotly_chart(fig)
 
