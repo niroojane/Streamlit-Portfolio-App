@@ -377,6 +377,7 @@ with main_tabs[1]:
             
                 if 'BTCUSDT' in range_prices.columns:
                     performance_fund['Bitcoin'] = range_prices['BTCUSDT']
+                
                 performance_pct = performance_fund.pct_change(fill_method=None)
                 
                 cumulative = (1 + performance_pct).cumprod() * 100
@@ -485,6 +486,9 @@ with main_tabs[1]:
         
         with sub_tabs[1]:
             
+            # if "dataframe" not in st.session_state:
+            #     st.info("Load data first ⬅️")
+            
             if st.session_state.results is None:
                 st.info("Compute Optimization first ⬅️")
                 
@@ -514,8 +518,8 @@ with main_tabs[1]:
                                        freq=selected_frequency_calendar, 
                                        benchmark=benchmark_calendar, 
                                        fund=fund_calendar)
-
-                
+                    # for name, fig in graphs.items():
+                    #     st.plotly_chart(fig, use_container_width=False, key=f"plot_{name}")
                 col1, col2 = st.columns([1, 1])
                 keys=list(graphs.keys())
                 with col1:
