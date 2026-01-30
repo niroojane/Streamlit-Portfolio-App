@@ -418,68 +418,68 @@ with main_tabs[1]:
                     "cumulative_results":cumulative_results,
                     "indicators":indicators}
                 
-        if st.session_state.results is not None:
-            
-            res=st.session_state.results
-            cumulative_performance=res['cumulative_results'].loc[mask].pct_change()
-            cumulative_performance.iloc[0] = 0
-            cumulative_results = (1 + cumulative_performance).cumprod() * 100
-            drawdown = (cumulative_results - cumulative_results.cummax()) / cumulative_results.cummax()
-            rolling_vol_ptf = cumulative_results.pct_change().rolling(window_vol).std() * np.sqrt(260)
-            
-            frontier_indicators, fig4 = get_frontier(range_returns, res['alloc_df'])
-    
-            fig = px.line(cumulative_results, title='Performance', width=800, height=400)
-            fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
-            fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
-            fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
-        
-            fig2 = px.line(drawdown, title='Drawdown', width=800, height=400)
-            fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
-            fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
-            fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
-    
-        
-            fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
-            fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
-            fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
-            fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
-        
-            fig4.update_layout(width=800, height=400,title={'text': "Efficient Frontier"})
-            fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))    
-        
-            res = st.session_state.results
-            
-            st.subheader("Weights Matrix")
-            st.dataframe(res["rolling_optimization"],use_container_width=True)
-            st.subheader("Allocation Table")
-            st.dataframe(res["alloc_df"],use_container_width=True)
-
-            
-            st.subheader("Expected Returns")
-            st.dataframe(frontier_indicators,use_container_width=True)
-
-            st.subheader("Systematic Fund Metrics")
-            st.dataframe(res["indicators"],use_container_width=True)
-            
-            st.subheader("Backtested Metrics")
-            st.dataframe(rebalanced_metrics(cumulative_results),use_container_width=True)
-            st.dataframe(get_portfolio_risk(res["alloc_df"], range_prices, cumulative_results, benchmark_tracking_error),use_container_width=True)
-    
-            st.subheader("Charts")
-            col1, col2 = st.columns([1, 1])
-
-            with col1:
-                    st.plotly_chart(fig, use_container_width=False)
-                    st.plotly_chart(fig2, use_container_width=False)
-            with col2:
-                    st.plotly_chart(fig3, use_container_width=False)
-                    st.plotly_chart(fig4, use_container_width=False)
+            if st.session_state.results is not None:
                 
-            st.subheader("Time Series")
-            st.dataframe(cumulative_results,use_container_width=True)
-        else:
-            st.info("Compute Optimization first ⬅️")
+                res=st.session_state.results
+                cumulative_performance=res['cumulative_results'].loc[mask].pct_change()
+                cumulative_performance.iloc[0] = 0
+                cumulative_results = (1 + cumulative_performance).cumprod() * 100
+                drawdown = (cumulative_results - cumulative_results.cummax()) / cumulative_results.cummax()
+                rolling_vol_ptf = cumulative_results.pct_change().rolling(window_vol).std() * np.sqrt(260)
+                
+                frontier_indicators, fig4 = get_frontier(range_returns, res['alloc_df'])
+        
+                fig = px.line(cumulative_results, title='Performance', width=800, height=400)
+                fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+            
+                fig2 = px.line(drawdown, title='Drawdown', width=800, height=400)
+                fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        
+            
+                fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
+                fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
+            
+                fig4.update_layout(width=800, height=400,title={'text': "Efficient Frontier"})
+                fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))    
+            
+                res = st.session_state.results
+                
+                st.subheader("Weights Matrix")
+                st.dataframe(res["rolling_optimization"],use_container_width=True)
+                st.subheader("Allocation Table")
+                st.dataframe(res["alloc_df"],use_container_width=True)
+    
+                
+                st.subheader("Expected Returns")
+                st.dataframe(frontier_indicators,use_container_width=True)
+    
+                st.subheader("Systematic Fund Metrics")
+                st.dataframe(res["indicators"],use_container_width=True)
+                
+                st.subheader("Backtested Metrics")
+                st.dataframe(rebalanced_metrics(cumulative_results),use_container_width=True)
+                st.dataframe(get_portfolio_risk(res["alloc_df"], range_prices, cumulative_results, benchmark_tracking_error),use_container_width=True)
+        
+                st.subheader("Charts")
+                col1, col2 = st.columns([1, 1])
+    
+                with col1:
+                        st.plotly_chart(fig, use_container_width=False)
+                        st.plotly_chart(fig2, use_container_width=False)
+                with col2:
+                        st.plotly_chart(fig3, use_container_width=False)
+                        st.plotly_chart(fig4, use_container_width=False)
+                    
+                st.subheader("Time Series")
+                st.dataframe(cumulative_results,use_container_width=True)
+            else:
+                st.info("Compute Optimization first ⬅️")
 
         
         with sub_tabs[1]:
