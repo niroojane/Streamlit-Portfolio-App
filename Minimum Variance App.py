@@ -404,7 +404,7 @@ with main_tabs[1]:
                 cumulative_performance = performance_pct.loc[mask]
                 cumulative_performance.iloc[0] = 0
                 cumulative_results = (1 + cumulative_performance).cumprod() * 100
-        
+
                 portfolio_returns = rebalanced_time_series(range_prices, alloc_df, frequency=selected_frequency)
                 cumulative_results = pd.concat([cumulative_results, portfolio_returns], axis=1)
                 drawdown = (cumulative_results - cumulative_results.cummax()) / cumulative_results.cummax()
@@ -416,16 +416,14 @@ with main_tabs[1]:
                     "quantities": quantities,
                     "performance_pct": performance_pct,
                     "cumulative_results":cumulative_results,
-                    "cumulative_performance":cumulative_performance,
                     "indicators":indicators}
                 
         if st.session_state.results is not None:
             
             res=st.session_state.results
-            cumulative_performance=res['cumulative_performance'].loc[mask]
+            cumulative_performance=res['cumulative_results'].loc[mask].pct_change()
             cumulative_performance.iloc[0] = 0
             cumulative_results = (1 + cumulative_performance).cumprod() * 100
-            
             drawdown = (cumulative_results - cumulative_results.cummax()) / cumulative_results.cummax()
             rolling_vol_ptf = cumulative_results.pct_change().rolling(window_vol).std() * np.sqrt(260)
             
