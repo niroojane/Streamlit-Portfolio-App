@@ -143,7 +143,6 @@ with main_tabs[0]:
         asset_returns=get_asset_returns(dataframe.loc[mask])
         asset_risk=get_asset_risk(dataframe.loc[mask])
         
-        st.dataframe(dataframe.loc[mask],use_container_width=True)
     
         st.dataframe(asset_returns,use_container_width=True)
         st.dataframe(asset_risk,use_container_width=True)
@@ -168,6 +167,7 @@ with main_tabs[0]:
             st.plotly_chart(fig,use_container_width=False)
         with col2:
             st.plotly_chart(fig2,use_container_width=False)
+        st.dataframe(dataframe.loc[mask],use_container_width=True)
 
 with main_tabs[1]:
 
