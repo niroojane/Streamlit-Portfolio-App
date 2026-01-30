@@ -144,8 +144,8 @@ with main_tabs[0]:
         asset_risk=get_asset_risk(dataframe.loc[mask])
         
     
-        st.dataframe(asset_returns,use_container_width=True)
-        st.dataframe(asset_risk,use_container_width=True)
+        st.dataframe(asset_returns,width='stretch')
+        st.dataframe(asset_risk,width='stretch')
         
         fig = px.line(dataframe.loc[mask], title='Price', width=800, height=400)
         fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
@@ -164,10 +164,10 @@ with main_tabs[0]:
         fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
         col1, col2 = st.columns([1, 1])
         with col1:
-            st.plotly_chart(fig,use_container_width=False)
+            st.plotly_chart(fig,width='content')
         with col2:
-            st.plotly_chart(fig2,use_container_width=False)
-        st.dataframe(dataframe.loc[mask],use_container_width=True)
+            st.plotly_chart(fig2,width='content')
+        st.dataframe(dataframe.loc[mask],width='stretch')
 
 with main_tabs[1]:
 
@@ -214,8 +214,8 @@ with main_tabs[1]:
             asset_returns=get_asset_returns(range_prices)
             asset_risk=get_asset_risk(range_prices)
             
-            st.dataframe(asset_returns,use_container_width=True)
-            st.dataframe(asset_risk,use_container_width=True)
+            st.dataframe(asset_returns,width='stretch')
+            st.dataframe(asset_risk,width='stretch')
         
             st.subheader("Constraints")  
                     
@@ -460,33 +460,33 @@ with main_tabs[1]:
                 res = st.session_state.results
                 
                 st.subheader("Weights Matrix")
-                st.dataframe(res["rolling_optimization"],use_container_width=True)
+                st.dataframe(res["rolling_optimization"],width='stretch')
                 st.subheader("Allocation Table")
-                st.dataframe(res["alloc_df"],use_container_width=True)
+                st.dataframe(res["alloc_df"],width='stretch')
     
                 
                 st.subheader("Expected Returns")
-                st.dataframe(frontier_indicators,use_container_width=True)
+                st.dataframe(frontier_indicators,width='stretch')
     
                 st.subheader("Systematic Fund Metrics")
-                st.dataframe(res["indicators"],use_container_width=True)
+                st.dataframe(res["indicators"],width='stretch')
                 
                 st.subheader("Backtested Metrics")
-                st.dataframe(rebalanced_metrics(cumulative_results),use_container_width=True)
-                st.dataframe(get_portfolio_risk(res["alloc_df"], range_prices, cumulative_results, benchmark_tracking_error),use_container_width=True)
+                st.dataframe(rebalanced_metrics(cumulative_results),width='stretch')
+                st.dataframe(get_portfolio_risk(res["alloc_df"], range_prices, cumulative_results, benchmark_tracking_error),width='stretch')
         
                 st.subheader("Charts")
                 col1, col2 = st.columns([1, 1])
     
                 with col1:
-                        st.plotly_chart(fig, use_container_width=False)
-                        st.plotly_chart(fig2, use_container_width=False)
+                        st.plotly_chart(fig, width='content')
+                        st.plotly_chart(fig2, width='content')
                 with col2:
-                        st.plotly_chart(fig3, use_container_width=False)
-                        st.plotly_chart(fig4, use_container_width=False)
+                        st.plotly_chart(fig3, width='content')
+                        st.plotly_chart(fig4, width='content')
                     
                 st.subheader("Time Series")
-                st.dataframe(cumulative_results,use_container_width=True)
+                st.dataframe(cumulative_results,width='stretch')
             else:
                 st.info("Compute Optimization first ⬅️")
 
@@ -526,15 +526,15 @@ with main_tabs[1]:
                                        benchmark=benchmark_calendar, 
                                        fund=fund_calendar)
                     # for name, fig in graphs.items():
-                    #     st.plotly_chart(fig, use_container_width=False, key=f"plot_{name}")
+                    #     st.plotly_chart(fig, width='content', key=f"plot_{name}")
                 col1, col2 = st.columns([1, 1])
                 keys=list(graphs.keys())
                 with col1:
-                    st.plotly_chart(graphs[keys[0]], use_container_width=False, key=f"plot_{keys[0]}")
-                    st.plotly_chart(graphs[keys[1]], use_container_width=False, key=f"plot_{keys[1]}")
+                    st.plotly_chart(graphs[keys[0]], width='content', key=f"plot_{keys[0]}")
+                    st.plotly_chart(graphs[keys[1]], width='content', key=f"plot_{keys[1]}")
                 with col2:
-                    st.plotly_chart(graphs[keys[2]], use_container_width=False, key=f"plot_{keys[2]}")
-                    st.plotly_chart(graphs[keys[3]], use_container_width=False, key=f"plot_{keys[3]}")           
+                    st.plotly_chart(graphs[keys[2]], width='content', key=f"plot_{keys[2]}")
+                    st.plotly_chart(graphs[keys[3]], width='content', key=f"plot_{keys[3]}")           
 
         
 with main_tabs[2]: 
@@ -581,7 +581,7 @@ with main_tabs[2]:
             
             st.subheader("Allocation")
             
-            st.dataframe(allocation_dataframe,use_container_width=True)
+            st.dataframe(allocation_dataframe,width='stretch')
             
             st.subheader("Risk Decomposition")
             
@@ -634,10 +634,10 @@ with main_tabs[2]:
             
             ex_ante_dataframe = pd.DataFrame(data)
     
-            st.dataframe(profit_and_loss_simulated,use_container_width=True)    
+            st.dataframe(profit_and_loss_simulated,width='stretch')    
             st.subheader("Ex Ante Metrics")
     
-            st.dataframe(ex_ante_dataframe,use_container_width=True)
+            st.dataframe(ex_ante_dataframe,width='stretch')
 
         with sub_tabs_risk[1]:
         
@@ -755,9 +755,9 @@ with main_tabs[2]:
             
                 fund_results_dataframe = pd.DataFrame(fund_results).T
                 
-                st.dataframe(var_dataframe,use_container_width=True)
-                st.dataframe(cvar_dataframe,use_container_width=True)
-                st.dataframe(fund_results_dataframe,use_container_width=True)
+                st.dataframe(var_dataframe,width='stretch')
+                st.dataframe(cvar_dataframe,width='stretch')
+                st.dataframe(fund_results_dataframe,width='stretch')
 
 with main_tabs[3]:
     
@@ -840,13 +840,13 @@ with main_tabs[3]:
             fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
             with col1:
-                st.plotly_chart(fig,use_container_width=False)
+                st.plotly_chart(fig,width='content')
             with col2:
-                st.plotly_chart(fig2,use_container_width=False)
-                st.plotly_chart(fig4,use_container_width=False)
+                st.plotly_chart(fig2,width='content')
+                st.plotly_chart(fig4,width='content')
 
             with col3:
-                st.plotly_chart(fig3,use_container_width=False)
+                st.plotly_chart(fig3,width='content')
             
         with sub_tabs_market[1]:
       
@@ -902,8 +902,8 @@ with main_tabs[3]:
             fig3.update_layout(xaxis_title=None, yaxis_title=None)
 
             with col1:
-                st.plotly_chart(fig,use_container_width=False)
+                st.plotly_chart(fig,width='content')
             with col2:
-                st.plotly_chart(fig3,use_container_width=False)
+                st.plotly_chart(fig3,width='content')
             with col3:
-                st.plotly_chart(fig2,use_container_width=False)
+                st.plotly_chart(fig2,width='content')
