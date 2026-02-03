@@ -754,9 +754,11 @@ with main_tabs[2]:
                 cvar_dataframe.columns = columns
             
                 fund_results_dataframe = pd.DataFrame(fund_results).T
-                
+                st.subheader('Value at Risk')
                 st.dataframe(var_dataframe,width='stretch')
+                st.subheader('Conditional Value at Risk')
                 st.dataframe(cvar_dataframe,width='stretch')
+                st.subheader('VaR Contribution')
                 st.dataframe(fund_results_dataframe,width='stretch')
 
 with main_tabs[3]:
