@@ -531,10 +531,10 @@ with main_tabs[1]:
                 keys=list(graphs.keys())
                 with col1:
                     st.plotly_chart(graphs[keys[0]], width='content', key=f"plot_{keys[0]}")
-                    st.plotly_chart(graphs[keys[1]], width='content', key=f"plot_{keys[1]}")
+                    st.plotly_chart(graphs[keys[2]], width='content', key=f"plot_{keys[1]}")
                 with col2:
-                    st.plotly_chart(graphs[keys[2]], width='content', key=f"plot_{keys[2]}")
-                    st.plotly_chart(graphs[keys[3]], width='content', key=f"plot_{keys[3]}")           
+                    st.plotly_chart(graphs[keys[1]], width='content', key=f"plot_{keys[2]}")
+                    st.plotly_chart(graphs[keys[3]], width='content', key=f"plot_{keys[3]}")      
 
         
 with main_tabs[2]: 
