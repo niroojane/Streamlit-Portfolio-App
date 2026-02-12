@@ -7,6 +7,7 @@ import pandas as pd
 import random
 import numpy as np
 import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -38,6 +39,7 @@ st.markdown(
 )
 
 def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=None):
+    
     if today is None:
         today=datetime.datetime.today()
     
@@ -45,16 +47,38 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=None):
     
     remaining=days%500
     numbers_of_table=days//500
+    start_dt = datetime.datetime.combine(start_date, datetime.time())
+    
+    end_dates = [
+        start_dt + datetime.timedelta(days=500 * i)
+        for i in range(numbers_of_table + 1)
+    ]
 
-    temp_end=start_date
-    scope_prices=pd.DataFrame()
-    for i in range(numbers_of_table+1):
-        data=get_price(tickers,temp_end)
-        temp_end=temp_end+datetime.timedelta(500)
-        scope_prices=scope_prices.combine_first(data)
+    end_dates.append(
+        datetime.datetime.combine(
+            today - datetime.timedelta(days=remaining),
+            datetime.time()
+        )
+    )
+
+    scope_prices = None
+
+    try:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = [executor.submit(get_price, tickers,d) for d in end_dates]
+
+            for future in as_completed(futures):
+                data = future.result()
+
+                if scope_prices is None:
+                    scope_prices = data
+                else:
+                    scope_prices = scope_prices.combine_first(data)
+
+    except Exception as e:
+        print("❌ Error while fetching prices:", e)
+        return
         
-    temp_end=(today-datetime.timedelta(remaining))
-    data=get_price(tickers,temp_end)
     scope_prices=scope_prices.combine_first(data)
     scope_prices=scope_prices.sort_index()
     scope_prices = scope_prices[~scope_prices.index.duplicated(keep='first')]
@@ -81,6 +105,57 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=None):
     st.session_state.dataframe = dataframe.ffill()
     st.session_state.returns_to_use = returns_to_use.fillna(0)
 
+    
+def process_index(index,allocation,dataframe,iterations,stress_factor,var_centile,num_scenarios):
+    
+    horizon = 1 / 250
+    spot = dataframe.iloc[-1]
+    theta = 2
+    
+    range_returns=dataframe.pct_change()
+
+    distrib_functions = {
+    'multivariate_distribution': (iterations, stress_factor),
+    'gaussian_copula': (iterations, stress_factor),
+    't_copula': (iterations, stress_factor),
+    'gumbel_copula': (iterations, theta),
+    'monte_carlo': (spot, horizon, iterations, stress_factor)
+    }
+    
+    portfolio = RiskAnalysis(range_returns)
+
+    vs, cvs = {}, {}
+    for func_name, args in distrib_functions.items():
+        func = getattr(portfolio, func_name)
+        scenarios = {}
+
+        for i in range(num_scenarios):
+            if func_name == 'monte_carlo':
+                distrib = pd.DataFrame(func(*args)[1], columns=portfolio.returns.columns)
+            else:
+                distrib = pd.DataFrame(func(*args), columns=portfolio.returns.columns)
+
+            distrib = distrib * allocation.loc[index]
+            distrib = distrib[distrib.columns[allocation.loc[index] > 0]]
+            distrib['Portfolio'] = distrib.sum(axis=1)
+
+            results = distrib.sort_values(by='Portfolio').iloc[int(distrib.shape[0] * var_centile)]
+            scenarios[i] = results
+
+        scenario = pd.DataFrame(scenarios).T
+        mean_scenario = scenario.mean()
+        index_cvar = scenario['Portfolio'] < mean_scenario['Portfolio']
+        cvar = scenario.loc[index_cvar].mean()
+
+        vs[func_name] = mean_scenario
+        cvs[func_name] = cvar
+
+    fund_result = {
+        'Value At Risk': mean_scenario.loc['Portfolio'],
+        'CVaR': cvar.loc['Portfolio']
+    }
+
+    return index, vs, cvs, fund_result
 
 main_tabs=st.tabs(["Investment Universe","Strategy","Risk Analysis","Market Risk"])
     
@@ -107,7 +182,7 @@ with main_tabs[0]:
     
     starting_date= st.date_input("Starting Date", datetime.datetime(2020, 1, 1))
     dt = datetime.datetime.combine(starting_date, datetime.datetime.min.time())
-
+    
     price_button=st.button(label='Get Prices')
            
     if price_button:
@@ -673,22 +748,11 @@ with main_tabs[2]:
             num_scenarios=st.number_input("Scenarios:", min_value=1, value=100, step=1)
             var_centile=st.number_input("Centile:", min_value=0.00, value=0.05, step=0.01)
     
-            var_button=st.button("Value at Risk:")
-        
+            var_button=st.button("Run Simulation")
+            var_status=st.empty()
+
             selected_fund_var=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='selected_fund_var')
-    
-            horizon = 1 / 250
-            spot = dataframe.iloc[-1]
-            theta = 2
-        
-            distrib_functions = {
-                'multivariate_distribution': (iterations, stress_factor),
-                'gaussian_copula': (iterations, stress_factor),
-                't_copula': (iterations, stress_factor),
-                'gumbel_copula': (iterations, theta),
-                'monte_carlo': (spot, horizon, iterations, stress_factor)
-            }
-    
+
             
             var_scenarios, cvar_scenarios, fund_results = {}, {}, {}
             
@@ -700,43 +764,31 @@ with main_tabs[2]:
                 st.session_state.cvar_scenarios=None
                 
             if var_button:
-            
-                st.session_state.fund_results=None
-                st.session_state.var_scenarios=None
-                st.session_state.cvar_scenarios=None
-                
-                for index in allocation_dataframe.index:
-                    var_scenarios[index], cvar_scenarios[index] = {}, {}
-                    for func_name, args in distrib_functions.items():
-                        func = getattr(portfolio, func_name)
-                        scenarios = {}
-                
-                        for i in range(num_scenarios):
-                            if func_name == 'monte_carlo':
-                                distrib = pd.DataFrame(func(*args)[1], columns=range_returns.columns)
-                            else:
-                                distrib = pd.DataFrame(func(*args), columns=range_returns.columns)
+                with st.spinner("Computing VaR...",show_time=True):
+
+                    st.session_state.fund_results=None
+                    st.session_state.var_scenarios=None
+                    st.session_state.cvar_scenarios=None
+    
+                    tasks=[(idx,allocation_dataframe,range_prices,iterations,stress_factor,var_centile,num_scenarios) for idx in allocation_dataframe.index]
                     
-                            distrib = distrib * allocation_dataframe.loc[index]
-                            distrib = distrib[distrib.columns[allocation_dataframe.loc[index] > 0]]
-                            distrib['Portfolio'] = distrib.sum(axis=1)
+                    var_scenarios={}
+                    cvar_scenarios={}
+                    fund_results={}
                     
-                            results = distrib.sort_values(by='Portfolio').iloc[int(distrib.shape[0] * var_centile)]
-                            scenarios[i] = results
-                
-                        scenario = pd.DataFrame(scenarios).T
-                        mean_scenario = scenario.mean()
-                        index_cvar = scenario['Portfolio'] < mean_scenario['Portfolio']
-                        cvar = scenario.loc[index_cvar].mean()
-                    
-                        var_scenarios[index][func_name] = mean_scenario
-                        cvar_scenarios[index][func_name] = cvar
-                    
-                    fund_results[index] = {'Value At Risk': mean_scenario.loc['Portfolio'],'CVaR': cvar.loc['Portfolio']}
-        
-                st.session_state.var_scenarios=var_scenarios
-                st.session_state.cvar_scenarios=cvar_scenarios
-                st.session_state.fund_results=fund_results
+                    with ThreadPoolExecutor(max_workers=8) as executor:
+                        futures = {executor.submit(process_index,idx,allocation_dataframe,range_prices,iterations,stress_factor,var_centile,num_scenarios): (idx,allocation_dataframe,range_prices,iterations,stress_factor,var_centile,num_scenarios)
+                                   for idx,allocation_dataframe,range_prices,iterations,stress_factor,var_centile,num_scenarios in tasks}
+                        for future in as_completed(futures):
+                            idx, vs, cvs, fund_result = future.result()
+                            var_scenarios[idx] = vs
+                            cvar_scenarios[idx] = cvs
+                            fund_results[idx] = fund_result
+
+                    st.session_state.var_scenarios = var_scenarios
+                    st.session_state.cvar_scenarios = cvar_scenarios
+                    st.session_state.fund_results = fund_results
+                    var_status.success('Done!')
     
         
             if st.session_state.fund_results is not None:
