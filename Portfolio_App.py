@@ -293,13 +293,13 @@ if uploaded_file:
         st.subheader("Portfolio Value Evolution")
         
             
-        fig = px.line(portfolio_returns, title="Portfolio Value Evolution").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        fig = px.line(portfolio_returns, title="Portfolio Value Evolution", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig,width='stretch')
         
-        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         st.plotly_chart(fig2,width='stretch')
         
-        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
 
         st.plotly_chart(fig3,width='stretch')
         

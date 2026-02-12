@@ -147,7 +147,7 @@ with main_tabs[0]:
         st.dataframe(asset_returns,width='stretch')
         st.dataframe(asset_risk,width='stretch')
         
-        fig = px.line(dataframe.loc[mask], title='Price', width=800, height=400)
+        fig = px.line(dataframe.loc[mask], title='Price', width=800, height=400, render_mode = 'svg')
         fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
         fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
         fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
@@ -158,7 +158,7 @@ with main_tabs[0]:
         cumulative_returns.iloc[0]=0
         cumulative_returns=(1+cumulative_returns).cumprod()*100
         
-        fig2 = px.line(cumulative_returns, title='Cumulative Performance', width=800, height=400)
+        fig2 = px.line(cumulative_returns, title='Cumulative Performance', width=800, height=400, render_mode = 'svg')
         fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
         fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
         fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
@@ -438,18 +438,18 @@ with main_tabs[1]:
                 
                 frontier_indicators, fig4 = get_frontier(range_returns, res['alloc_df'])
         
-                fig = px.line(cumulative_results, title='Performance', width=800, height=400)
+                fig = px.line(cumulative_results, title='Performance', width=800, height=400, render_mode = 'svg')
                 fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
                 fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
-                fig2 = px.line(drawdown, title='Drawdown', width=800, height=400)
+                fig2 = px.line(drawdown, title='Drawdown', width=800, height=400, render_mode = 'svg')
                 fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
                 fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
         
             
-                fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility").update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
                 fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
@@ -534,7 +534,7 @@ with main_tabs[1]:
                     st.plotly_chart(graphs[keys[2]], width='content', key=f"plot_{keys[1]}")
                 with col2:
                     st.plotly_chart(graphs[keys[1]], width='content', key=f"plot_{keys[2]}")
-                    st.plotly_chart(graphs[keys[3]], width='content', key=f"plot_{keys[3]}")      
+                    st.plotly_chart(graphs[keys[3]], width='content', key=f"plot_{keys[3]}")           
 
         
 with main_tabs[2]: 
@@ -754,11 +754,9 @@ with main_tabs[2]:
                 cvar_dataframe.columns = columns
             
                 fund_results_dataframe = pd.DataFrame(fund_results).T
-                st.subheader('Value at Risk')
+                
                 st.dataframe(var_dataframe,width='stretch')
-                st.subheader('Conditional Value at Risk')
                 st.dataframe(cvar_dataframe,width='stretch')
-                st.subheader('Results')
                 st.dataframe(fund_results_dataframe,width='stretch')
 
 with main_tabs[3]:
@@ -833,11 +831,11 @@ with main_tabs[3]:
             fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400) 
             fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
-            fig3=px.line((1+historical_PCA).cumprod(),title='Eigen Index')
+            fig3=px.line((1+historical_PCA).cumprod(),title='Eigen Index', render_mode = 'svg')
             fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
             fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
     
-            fig4=px.line(pca_similarity,title='PCA Similarity')
+            fig4=px.line(pca_similarity,title='PCA Similarity', render_mode = 'svg')
             fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
             fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
@@ -889,7 +887,7 @@ with main_tabs[3]:
                 range_returns[dropdown_asset2]
             ).dropna()
             
-            fig = px.line(rolling_correlation, title=f"{dropdown_asset1}/{dropdown_asset2} Correlation")
+            fig = px.line(rolling_correlation, title=f"{dropdown_asset1}/{dropdown_asset2} Correlation", render_mode = 'svg')
             fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
             fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
     
@@ -899,7 +897,7 @@ with main_tabs[3]:
             fig2.update_traces(xgap=2, ygap=2)
             fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
-            fig3=px.line(pca_over_time,title='First principal component (Variance Explained in %)')
+            fig3=px.line(pca_over_time,title='First principal component (Variance Explained in %)', render_mode = 'svg')
             fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
             fig3.update_layout(xaxis_title=None, yaxis_title=None)
 
