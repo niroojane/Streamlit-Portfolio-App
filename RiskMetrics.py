@@ -72,7 +72,7 @@ def get_ex_ante_vol_contribution_in_pct(weights_series,returns,window=252):
         weights=weights_series.loc[subset.index[-1]]
         weights=weights[weights != 0]
         portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        dico_results[subset.index[-1]]=portfolio_class.var_contrib_pct(weights)['Variance Contribution in %']
+        dico_results[subset.index[-1]]=portfolio_class.var_contrib_pct(weights)['Vol Contribution in %']
 
     dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
     dataframe['Total Vol in %']=dataframe.sum(axis=1)
@@ -87,7 +87,7 @@ def get_ex_ante_vol_contribution(weights_series,returns,window=252):
         weights=weights_series.loc[subset.index[-1]]
         weights=weights[weights != 0]
         portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Variance Contribution']
+        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Vol Contribution']
 
     dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
     dataframe['Total Vol']=dataframe.sum(axis=1)
@@ -712,25 +712,25 @@ class RiskAnalysis(Portfolio):
         
         correlation_vol = vol_contrib - idiosyncratic_vol
         
-        weighted_covar=pd.DataFrame(vol_contrib,index=weights.index,columns=weights.index)
+        weighted_covar=pd.DataFrame(vol_contrib,index=self.returns.columns,columns=self.returns.columns)
         weighted_covar=weighted_covar.divide(portfolio_vol)
         
-        corr_mat=pd.DataFrame(vol_contrib-idiosyncratic_vol,index=weights.index,columns=weights.index)
-        idio_mat=pd.DataFrame(idiosyncratic_vol,index=weights.index,columns=weights.index)
+        corr_mat=pd.DataFrame(vol_contrib-idiosyncratic_vol,index=self.returns.columns,columns=self.returns.columns)
+        idio_mat=pd.DataFrame(idiosyncratic_vol,index=self.returns.columns,columns=self.returns.columns)
         
         contrib=pd.concat([idio_mat.sum()+corr_mat.sum(),idio_mat.sum(),corr_mat.sum()],axis=1)
         contrib=contrib.divide(portfolio_vol)
-        contrib.columns=['Variance Contribution','Idiosyncratic Risk','Correlation']   
+        contrib.columns=['Vol Contribution','Idiosyncratic Risk','Correlation']   
         
         return contrib,weighted_covar
     
     def var_contrib_pct(self,weights):
         
         var_contrib=self.var_contrib(weights)[0]
-        var_contrib=var_contrib/var_contrib['Variance Contribution'].sum()
-        var_contrib.columns=['Variance Contribution in %','Idiosyncratic Risk in %','Correlation in %']
+        var_contrib=var_contrib/var_contrib['Vol Contribution'].sum()
+        var_contrib.columns=['Vol Contribution in %','Idiosyncratic Risk in %','Correlation in %']
         var_contrib=var_contrib.loc[(var_contrib!=0).any(axis=1)]
-        var_contrib=var_contrib.sort_values('Variance Contribution in %', ascending=False)
+        var_contrib=var_contrib.sort_values('Vol Contribution in %', ascending=False)
     
         return var_contrib
     
