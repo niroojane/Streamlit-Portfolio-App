@@ -693,7 +693,7 @@ with main_tabs[2]:
             profit_and_loss_simulated = pd.concat([pnl_buy_and_hold, pnl_rebalanced, decomposition], axis=1)
             profit_and_loss_simulated.loc['Total'] = profit_and_loss_simulated.sum(axis=0)
             profit_and_loss_simulated=profit_and_loss_simulated.fillna(0)
-            profit_and_loss_simulated=profit_and_loss_simulated.sort_values(by='Variance Contribution in %', ascending=False)
+            profit_and_loss_simulated=profit_and_loss_simulated.sort_values(by='Vol Contribution in %', ascending=False)
         
             vol_ex_ante = {}
             tracking_error_ex_ante = {}

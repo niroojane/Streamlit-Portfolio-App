@@ -519,7 +519,8 @@ if uploaded_file:
         selected_weights=weight_matrix[selected_fund]
         
         decomposition=pd.DataFrame(portfolio.var_contrib_pct(selected_weights))
-        
+        decomposition_vol=pd.DataFrame(portfolio.var_contrib(selected_weights)[0])
+
         
         quantities_rebalanced=rebalanced_portfolio(prices,selected_weights,frequency=frequency)/prices
         quantities_buy_hold=buy_and_hold(prices,selected_weights)/prices
@@ -542,5 +543,4 @@ if uploaded_file:
         
         st.dataframe(pnl.fillna(0).sort_values(by='Profit and Loss (Rebalanced)',ascending=False),width='stretch')
 
-
-
+        st.dataframe(decomposition_vol.sort_values(by='Vol Contribution',ascending=False),width='stretch')
