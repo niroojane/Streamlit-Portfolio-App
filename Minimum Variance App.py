@@ -674,7 +674,8 @@ with main_tabs[2]:
             selected_weights = allocation_dataframe.loc[fund_risk]
             
             decomposition = pd.DataFrame(portfolio.var_contrib_pct(selected_weights))*100
-            decomposition_vol=pd.DataFrame(portfolio.var_contrib(selected_weights)[0])
+            decomposition_vol = pd.DataFrame(portfolio.var_contrib(selected_weights)[0])*100
+            decomposition_vol.loc['Total'] = decomposition_vol.sum(axis=0)
 
 
             quantities_rebalanced = rebalanced_portfolio(range_prices, selected_weights,frequency=frequency_pnl) / range_prices

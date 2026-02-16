@@ -518,8 +518,9 @@ if uploaded_file:
         selected_fund= st.selectbox("Fund:", funds_options,index=1)
         selected_weights=weight_matrix[selected_fund]
         
-        decomposition=pd.DataFrame(portfolio.var_contrib_pct(selected_weights))
-        decomposition_vol=pd.DataFrame(portfolio.var_contrib(selected_weights)[0])
+        decomposition = pd.DataFrame(portfolio.var_contrib_pct(selected_weights))*100
+        decomposition_vol = pd.DataFrame(portfolio.var_contrib(selected_weights)[0])*100
+        decomposition_vol.loc['Total'] = decomposition_vol.sum(axis=0)
 
         
         quantities_rebalanced=rebalanced_portfolio(prices,selected_weights,frequency=frequency)/prices
