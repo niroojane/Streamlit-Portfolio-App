@@ -674,7 +674,9 @@ with main_tabs[2]:
             selected_weights = allocation_dataframe.loc[fund_risk]
             
             decomposition = pd.DataFrame(portfolio.var_contrib_pct(selected_weights))*100
-            
+            decomposition_vol=pd.DataFrame(portfolio.var_contrib(selected_weights)[0])
+
+
             quantities_rebalanced = rebalanced_portfolio(range_prices, selected_weights,frequency=frequency_pnl) / range_prices
             quantities_buy_hold = buy_and_hold(range_prices, selected_weights) / range_prices
             
@@ -709,7 +711,10 @@ with main_tabs[2]:
             
             ex_ante_dataframe = pd.DataFrame(data)
     
-            st.dataframe(profit_and_loss_simulated,width='stretch')    
+            st.dataframe(profit_and_loss_simulated,width='stretch')
+
+            st.dataframe(decomposition_vol.sort_values(by='Vol Contribution',ascending=False),width='stretch')
+
             st.subheader("Ex Ante Metrics")
     
             st.dataframe(ex_ante_dataframe,width='stretch')
