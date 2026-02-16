@@ -61,6 +61,7 @@ def get_ex_ante_vol(weights_series,returns,window=252):
         dico_results[subset.index[-1]]=portfolio_class.variance(weights)
 
     dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+
     return dataframe
 
 def get_ex_ante_vol_contribution_in_pct(weights_series,returns,window=252):
@@ -91,6 +92,39 @@ def get_ex_ante_vol_contribution(weights_series,returns,window=252):
 
     dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
     dataframe['Total Vol']=dataframe.sum(axis=1)
+    
+    return dataframe
+
+def get_correlation_contribution(weights_series,returns,window=252):
+    
+    dico_results={}
+    
+    for i in range(returns.shape[0]-window):
+        subset=returns.iloc[i:i+window]
+        weights=weights_series.loc[subset.index[-1]]
+        weights=weights[weights != 0]
+        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
+        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Correlation']
+
+    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    dataframe['Total Vol']=dataframe.sum(axis=1)
+    
+    return dataframe
+    
+def get_idiosyncratic_contribution(weights_series,returns,window=252):
+    
+    dico_results={}
+    
+    for i in range(returns.shape[0]-window):
+        subset=returns.iloc[i:i+window]
+        weights=weights_series.loc[subset.index[-1]]
+        weights=weights[weights != 0]
+        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
+        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Idiosyncratic Risk']
+
+    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    dataframe['Total Vol']=dataframe.sum(axis=1)
+    
     return dataframe
     
 def first_pca_over_time(returns,window=252):
