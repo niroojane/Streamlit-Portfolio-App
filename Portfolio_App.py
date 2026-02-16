@@ -447,7 +447,7 @@ if uploaded_file:
             metrics['Returns'][key]=(np.round(portfolio.performance(weight_matrix[key]), 4))
             metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
             metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
-            temp=pd.DataFrame(portfolio.var_contrib_pct(weight_matrix[key])['Variance Contribution in %'])
+            temp=pd.DataFrame(portfolio.var_contrib_pct(weight_matrix[key])['Vol Contribution in %'])
             temp.columns=[key]
             variance_contrib=pd.concat([variance_contrib,temp],axis=1)
 
