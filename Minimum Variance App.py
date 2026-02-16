@@ -673,9 +673,8 @@ with main_tabs[2]:
             
             selected_weights = allocation_dataframe.loc[fund_risk]
             
-            decomposition = pd.DataFrame(portfolio.var_contrib_pct(selected_weights))*100
-            decomposition_vol = pd.DataFrame(portfolio.var_contrib(selected_weights)[0])*100
-            decomposition_vol.loc['Total'] = decomposition_vol.sum(axis=0)
+            decomposition = pd.DataFrame(portfolio.var_contrib(selected_weights)[0])*100
+ 
 
 
             quantities_rebalanced = rebalanced_portfolio(range_prices, selected_weights,frequency=frequency_pnl) / range_prices
@@ -696,7 +695,7 @@ with main_tabs[2]:
             profit_and_loss_simulated = pd.concat([pnl_buy_and_hold, pnl_rebalanced, decomposition], axis=1)
             profit_and_loss_simulated.loc['Total'] = profit_and_loss_simulated.sum(axis=0)
             profit_and_loss_simulated=profit_and_loss_simulated.fillna(0)
-            profit_and_loss_simulated=profit_and_loss_simulated.sort_values(by='Vol Contribution in %', ascending=False)
+            profit_and_loss_simulated=profit_and_loss_simulated.sort_values(by='Vol Contribution', ascending=False)
         
             vol_ex_ante = {}
             tracking_error_ex_ante = {}
@@ -713,8 +712,6 @@ with main_tabs[2]:
             ex_ante_dataframe = pd.DataFrame(data)
     
             st.dataframe(profit_and_loss_simulated,width='stretch')
-
-            st.dataframe(decomposition_vol.sort_values(by='Vol Contribution',ascending=False),width='stretch')
 
             st.subheader("Ex Ante Metrics")
     

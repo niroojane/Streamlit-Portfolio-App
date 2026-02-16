@@ -432,7 +432,7 @@ if uploaded_file:
         current_results_dataframe=pd.DataFrame(current_results,index=prices.columns).T.round(6)
         current_results=st.data_editor(current_results_dataframe, num_rows="dynamic")
         weight_matrix={}
-        variance_contrib=pd.DataFrame()
+        variance_contrib_summary=pd.DataFrame()
         
         for idx in current_results.index:
             weight_matrix[idx]=current_results.loc[idx].to_numpy()
@@ -447,10 +447,12 @@ if uploaded_file:
             metrics['Returns'][key]=(np.round(portfolio.performance(weight_matrix[key]), 4))
             metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
             metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
-            temp=pd.DataFrame(portfolio.var_contrib_pct(weight_matrix[key])['Vol Contribution in %'])
+            temp=pd.DataFrame(portfolio.var_contrib(weight_matrix[key])[0]['Vol Contribution'])*100
             temp.columns=[key]
-            variance_contrib=pd.concat([variance_contrib,temp],axis=1)
-
+            variance_contrib_summary=pd.concat([variance_contrib_summary,temp],axis=1)
+        variance_contrib_summary.loc['Total']=variance_contrib_summary.sum(axis=0)
+        variance_contrib_summary=variance_contrib_summary.sort_values(by=variance_contrib_summary.columns[0],ascending=False)
+        
         @st.cache_data
 
 
@@ -518,11 +520,8 @@ if uploaded_file:
         selected_fund= st.selectbox("Fund:", funds_options,index=1)
         selected_weights=weight_matrix[selected_fund]
         
-        decomposition = pd.DataFrame(portfolio.var_contrib_pct(selected_weights))*100
-        decomposition_vol = pd.DataFrame(portfolio.var_contrib(selected_weights)[0])*100
-        decomposition_vol.loc['Total'] = decomposition_vol.sum(axis=0)
+        decomposition = pd.DataFrame(portfolio.var_contrib(selected_weights)[0])*100
 
-        
         quantities_rebalanced=rebalanced_portfolio(prices,selected_weights,frequency=frequency)/prices
         quantities_buy_hold=buy_and_hold(prices,selected_weights)/prices
         
@@ -543,5 +542,4 @@ if uploaded_file:
         pnl.loc['Total']=pnl.sum(axis=0)
         
         st.dataframe(pnl.fillna(0).sort_values(by='Profit and Loss (Rebalanced)',ascending=False),width='stretch')
-
-        st.dataframe(decomposition_vol.sort_values(by='Vol Contribution',ascending=False),width='stretch')
+        st.dataframe(variance_contrib_summary,width='stretch')
