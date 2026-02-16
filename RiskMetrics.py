@@ -49,7 +49,50 @@ def variance_decomposition_ex_post(quantities,prices):
     
     return results
 
+def get_ex_ante_vol(weights_series,returns,window=252):
+    dico_results={}
+    
+    for i in range(returns.shape[0]-window):
+        subset=returns.iloc[i:i+window]
+        weights=weights_series.loc[subset.index[-1]]
+        weights=weights[weights != 0]
+        
+        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
+        dico_results[subset.index[-1]]=portfolio_class.variance(weights)
 
+    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    return dataframe
+
+def get_ex_ante_vol_contribution_in_pct(weights_series,returns,window=252):
+    
+    dico_results={}
+    
+    for i in range(returns.shape[0]-window):
+        subset=returns.iloc[i:i+window]
+        weights=weights_series.loc[subset.index[-1]]
+        weights=weights[weights != 0]
+        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
+        dico_results[subset.index[-1]]=portfolio_class.var_contrib_pct(weights)['Variance Contribution in %']
+
+    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    dataframe['Total Vol in %']=dataframe.sum(axis=1)
+    return dataframe
+
+def get_ex_ante_vol_contribution(weights_series,returns,window=252):
+    
+    dico_results={}
+    
+    for i in range(returns.shape[0]-window):
+        subset=returns.iloc[i:i+window]
+        weights=weights_series.loc[subset.index[-1]]
+        weights=weights[weights != 0]
+        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
+        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Variance Contribution']
+
+    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    dataframe['Total Vol']=dataframe.sum(axis=1)
+    return dataframe
+    
 def first_pca_over_time(returns,window=252):
     dico = {}
     for i in range(0, returns.shape[0]):
@@ -649,15 +692,35 @@ class RiskAnalysis(Portfolio):
 
     def var_contrib(self,weights):
         
-        weights_matrix=np.diag(weights)
-        variance_contrib=np.dot(weights_matrix,np.dot(self.returns.cov(),weights_matrix.T))
+        # weights_matrix=np.diag(weights)
+        # variance_contrib=np.dot(weights_matrix,np.dot(self.returns.cov(),weights_matrix.T))
         
-        asset_contrib=variance_contrib.sum(axis=0)    
-        diag=np.diag(variance_contrib.diagonal())
-        variance_decomposition=np.column_stack([asset_contrib,variance_contrib.diagonal(),(variance_contrib-diag).sum(axis=0)])
-        contrib=pd.DataFrame(variance_decomposition,index=self.returns.columns,columns=['Variance Contribution','Idiosyncratic Risk','Correlation'])
+        # asset_contrib=variance_contrib.sum(axis=0)    
+        # diag=np.diag(variance_contrib.diagonal())
+        # variance_decomposition=np.column_stack([asset_contrib,variance_contrib.diagonal(),(variance_contrib-diag).sum(axis=0)])
+        # contrib=pd.DataFrame(variance_decomposition,index=self.returns.columns,columns=['Variance Contribution','Idiosyncratic Risk','Correlation'])
         
-        weighted_covar=pd.DataFrame(variance_contrib,columns=self.returns.columns,index=self.returns.columns)
+        # weighted_covar=pd.DataFrame(variance_contrib,columns=self.returns.columns,index=self.returns.columns)
+        cov=self.returns.cov()
+        
+        W = np.outer(weights, weights)
+        vol_contrib = W * cov*252
+        
+        portfolio_var = vol_contrib.sum()
+        portfolio_vol = np.sqrt(portfolio_var.sum())
+        idiosyncratic_vol = np.diag(np.diag(vol_contrib))
+        
+        correlation_vol = vol_contrib - idiosyncratic_vol
+        
+        weighted_covar=pd.DataFrame(vol_contrib,index=weights.index,columns=weights.index)
+        weighted_covar=weighted_covar.divide(portfolio_vol)
+        
+        corr_mat=pd.DataFrame(vol_contrib-idiosyncratic_vol,index=weights.index,columns=weights.index)
+        idio_mat=pd.DataFrame(idiosyncratic_vol,index=weights.index,columns=weights.index)
+        
+        contrib=pd.concat([idio_mat.sum()+corr_mat.sum(),idio_mat.sum(),corr_mat.sum()],axis=1)
+        contrib=contrib.divide(portfolio_vol)
+        contrib.columns=['Variance Contribution','Idiosyncratic Risk','Correlation']   
         
         return contrib,weighted_covar
     
