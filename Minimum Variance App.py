@@ -813,7 +813,7 @@ with main_tabs[2]:
                         fig4 = px.line(idiosyncratic_contrib, title='Idiosyncratic Contribution', width=800, height=400, render_mode = 'svg')
                         fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
                         fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
-                        fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
+                        fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Idiosyncratic Vol"])
                         st.plotly_chart(fig4,width='content')
                         
                     with col2:
@@ -827,7 +827,7 @@ with main_tabs[2]:
                         
                         fig3 = px.line(correlation_contrib, title='Correlation Contribution', width=800, height=400, render_mode = 'svg')
                         fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
-                        fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
+                        fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Correlation"])
                         fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         st.plotly_chart(fig3,width='content')
                 else:
@@ -949,7 +949,7 @@ with main_tabs[2]:
                         fig4 = px.line(idiosyncratic_contrib, title='Idiosyncratic Contribution', width=800, height=400, render_mode = 'svg')
                         fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
                         fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
-                        fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
+                        fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Idiosyncratic Vol"])
                         st.plotly_chart(fig4,width='content')
                         
                     with col2:
@@ -963,7 +963,7 @@ with main_tabs[2]:
                         
                         fig3 = px.line(correlation_contrib, title='Correlation Contribution', width=800, height=400, render_mode = 'svg')
                         fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
-                        fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
+                        fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Correlation"])
                         fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         st.plotly_chart(fig3,width='content')
                 else:
