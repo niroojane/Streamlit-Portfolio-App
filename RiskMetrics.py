@@ -107,7 +107,7 @@ def get_correlation_contribution(weights_series,returns,window=252):
         dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Correlation']
 
     dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
-    dataframe['Total Vol']=dataframe.sum(axis=1)
+    dataframe['Total Correlation']=dataframe.sum(axis=1)
     
     return dataframe
     
@@ -123,7 +123,7 @@ def get_idiosyncratic_contribution(weights_series,returns,window=252):
         dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Idiosyncratic Risk']
 
     dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
-    dataframe['Total Vol']=dataframe.sum(axis=1)
+    dataframe['Total Idiosyncratic Vol']=dataframe.sum(axis=1)
     
     return dataframe
     
