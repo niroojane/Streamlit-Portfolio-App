@@ -50,39 +50,7 @@ def display_scrollable_df(df, max_height="50vh", max_width="90vw"):
     """
     return HTML(style)
 
-def build_constraint(prices, constraint_matrix):
-    constraints = []
-    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
 
-    drop_down_list_asset = list(prices.columns) + ['All']
-    drop_down_list = drop_down_list_asset + [None]
-
-    try:
-        for row in range(constraint_matrix.shape[0]):
-            temp = constraint_matrix[row, :]
-            ticker = temp[0]
-
-            if ticker not in drop_down_list:
-                continue
-
-            sign = temp[1]
-            limit = float(temp[2])
-
-            if ticker == 'All':
-                constraint = diversification_constraint(sign, limit)
-
-            elif ticker in drop_down_list_asset:
-                position = np.where(prices.columns == ticker)[0][0]
-                constraint = create_constraint(sign, limit, position)
-
-            constraints.extend(constraint)
-
-    except Exception as e:
-        print(f"Error in build_constraint: {e}")
-
-    return constraints
-
-    
 def get_expected_metrics(returns,dataframe):
     portfolio=RiskAnalysis(returns)
     allocation_dict={}
@@ -385,7 +353,7 @@ def get_calendar_graph(performance_fund,fund='Fund',benchmark='Bitcoin',freq='Ye
         dico_fig[title]=fig
         
     return dico_fig
-        
+            
 def get_frontier(returns,dataframe):
     portfolio=RiskAnalysis(returns)
     frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()

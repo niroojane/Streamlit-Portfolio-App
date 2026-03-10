@@ -16,38 +16,6 @@ from statsmodels.stats.correlation_tools import cov_nearest
 
 
 # # General Functions
-def variance_decomposition_ex_post(quantities,prices):
-    ptf=(quantities*prices).dropna()
-    weights_ptf = ptf.div(ptf.sum(axis=1), axis=0).loc[ptf.index].to_numpy()
-    
-    r = prices.pct_change().fillna(0).loc[ptf.index].to_numpy()
-    T = r.shape[0]
-    n = r.shape[1]
-    
-    r_mean = r.mean(axis=0)
-    r_tilde = r - r_mean
-    rp_tilde = (weights_ptf * r_tilde).sum(axis=1)
-    
-    C_mat = np.zeros((n, n))
-    for t in range(T):
-        u = weights_ptf[t] * r_tilde[t]
-        C_mat += np.outer(u, u)
-    
-    C_mat /= (T - 1)
-    
-    diag_vec = np.diag(C_mat)
-    offdiag = C_mat - np.diag(diag_vec)
-    idiosyncratic = diag_vec
-    correlation = 0.5 * offdiag.sum(axis=1)
-    allocated = idiosyncratic + correlation
-    
-    results = pd.DataFrame({
-         "Variance": allocated,
-        "Correlation": correlation,
-       "Idiosyncratic": idiosyncratic
-    }, index=prices.columns)
-    
-    return results
 
 def get_ex_ante_vol(weights_series,returns,window=252):
     dico_results={}
@@ -328,7 +296,39 @@ def diversification_constraint(sign,limit):
 
     return constraints
 
+def build_constraint(prices, constraint_matrix):
+    constraints = []
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
 
+    drop_down_list_asset = list(prices.columns) + ['All']
+    drop_down_list = drop_down_list_asset + [None]
+
+    try:
+        for row in range(constraint_matrix.shape[0]):
+            temp = constraint_matrix[row, :]
+            ticker = temp[0]
+
+            if ticker not in drop_down_list:
+                continue
+
+            sign = temp[1]
+            limit = float(temp[2])
+
+            if ticker == 'All':
+                constraint = diversification_constraint(sign, limit)
+
+            elif ticker in drop_down_list_asset:
+                position = np.where(prices.columns == ticker)[0][0]
+                constraint = create_constraint(sign, limit, position)
+
+            constraints.extend(constraint)
+
+    except Exception as e:
+        print(f"Error in build_constraint: {e}")
+
+    return constraints
+
+    
 # ## Portfolio Construction
 
 
