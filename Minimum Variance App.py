@@ -1074,7 +1074,7 @@ with main_tabs[3]:
         st.info("Load data first ⬅️")
     else:
 
-        sub_tabs_market=st.tabs(['Market Risk','Correlation'])
+        sub_tabs_market=st.tabs(['Market Risk','Correlation','Market Drivers'])
 
         with sub_tabs_market[0]:
             dataframe = st.session_state.dataframe
@@ -1216,3 +1216,163 @@ with main_tabs[3]:
                 st.plotly_chart(fig3,width='content')
             with col3:
                 st.plotly_chart(fig2,width='content')
+
+        with sub_tabs_market[2]:
+
+            dataframe = st.session_state.dataframe
+            returns_to_use = st.session_state.returns_to_use
+            market_tickers=[t for t in tickers if t in dataframe.columns]
+                        
+            max_value = dataframe.index.max().strftime('%Y-%m-%d')
+            min_value = dataframe.index.min().strftime('%Y-%m-%d')
+            max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+            min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
+            value=(min_value,max_value)
+    
+            
+            Model_market_driver = st.slider(
+            'Date:',
+            min_value=min_value,
+            max_value=max_value,
+            value=value,key='market_driver_tab')
+        
+            selmin, selmax = Model_market_driver
+            selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+            selmaxd = selmax.strftime('%Y-%m-%d')
+            
+            mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+
+            range_prices=dataframe.loc[mask].copy()
+            range_returns=returns_to_use.loc[mask].copy()
+        
+            rebalancing_frequency_marker=st.selectbox("Rebalacing Frequency:",options=['Monthly','Quarterly','Yearly'],index=1,key='market_frequency_eigen_cov_matrix')
+            selected_pca_market=st.selectbox("PCA:",options=['PC1','PC2','PC3'])
+            window_vol_market=st.number_input("Window Vol:", min_value=7, value=252, step=1,key='window_vol_market')
+            market_factors_button=st.button("Get Market Drivers")
+            market_factors_status=st.empty()    
+            
+            if market_factors_button:
+                
+                st.session_state.eigen_weights=None
+                # st.session_state.quantities_eigen=None
+                # st.session_state.market_pnl=None
+                with st.spinner("Computing Market Drivers...",show_time=True):
+                    
+                    dates=get_rebalancing_dates(returns_to_use,frequency=rebalancing_frequency_marker)
+                    tasks = [(returns_to_use.loc[dates[i]:dates[i+1]],dates[i], dates[i+1]) for i in range(len(dates)-1)]
+                    # Run with threads
+                    results = {}
+                    def worker(subset,start, end):
+            
+                        if subset.empty or len(subset) < 2:
+                            return None
+                        try:
+                            risk = RiskAnalysis(subset)
+                            eigval,eigvec,portfolio_components=risk.pca(num_components=5)
+                            weights=np.real(portfolio_components[selected_pca_market].to_numpy())
+                            
+                            return subset.index[-1], np.round(weights, 6)
+                        except Exception:
+                            return None
+            
+                    with ThreadPoolExecutor(max_workers=8) as executor:
+                        futures = {executor.submit(worker,subset, start, end): (subset,start, end) for subset,start, end in tasks}
+                        for future in as_completed(futures):
+                            out = future.result()
+                            if out is not None:
+                                date_key, weights = out
+                                results[date_key] = weights
+                                
+                    if not results:
+                        print("⚠️ No valid Eigen values computed.")
+                        
+                    weights=pd.DataFrame(results).T
+
+                    st.session_state.eigen_weights=weights
+                    market_factors_status.success('Done!')
+                    
+            if ('eigen_weights' in st.session_state and st.session_state.eigen_weights is not None):   
+                
+                weights=st.session_state.eigen_weights
+                
+                mask = (weights.index >= selmind) & (weights.index <= selmaxd)
+
+                quantities_eigen=rebalanced_dynamic_quantities(range_prices,weights.loc[mask])
+                
+                market_portfolio=(quantities_eigen*range_prices)
+                market_pnl=market_portfolio-rebalanced_book_cost(range_prices,quantities_eigen)
+                market_pnl['Market Index']=market_pnl.sum(axis=1)
+                                
+                weights_series=market_portfolio.copy()
+                weights_series=weights_series.apply(lambda x: x/market_portfolio.sum(axis=1))  
+                
+                market_index=market_portfolio.sum(axis=1).to_frame()
+                market_index=market_index.pct_change(fill_method=None)
+                market_index.columns=['Market Index']
+                
+                vol_contribution=get_ex_ante_vol_contribution(weights_series,range_returns,window=window_vol_market)
+                correlation_contribution=get_correlation_contribution(weights_series,range_returns,window=window_vol_market)
+                idiosyncratic_contribution=get_idiosyncratic_contribution(weights_series,range_returns,window=window_vol_market)
+                col1, col2 = st.columns([1, 1])
+                
+                perf_index_eigen=pd.DataFrame()
+                
+
+                if 'results' in st.session_state and st.session_state.results is not None:                        
+                    
+                    res=st.session_state.results
+                    global_returns=res['cumulative_results'].pct_change(fill_method=None)
+                    perf_index_eigen=market_index.pct_change(fill_method=None)
+                    perf_index_eigen=pd.concat([market_index,global_returns],axis=1)
+                else:
+                    perf_index_eigen=market_index
+                
+                mask = (perf_index_eigen.index >= selmind) & (perf_index_eigen.index <= selmaxd)
+
+                perf_index_eigen=perf_index_eigen.loc[mask]            
+                perf_index_eigen.iloc[0]=0
+                market_results=(1+perf_index_eigen).cumprod()*100
+        
+                with col1:
+                    fig = px.line(market_results, title='Performance Comparison', width=800, height=400, render_mode = 'svg')
+                    fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Market Index","Fund","Bitcoin","Historical Portfolio"])
+                    fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                    
+                    fig2 = px.line(market_pnl, title='Market Drivers', width=800, height=400, render_mode = 'svg')
+                    fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Market Index"])
+                    fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                    
+                    fig3 = px.line(correlation_contribution, title='Market Correlation', width=800, height=400, render_mode = 'svg')
+                    fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Correlation"])
+                    fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                     
+                    st.plotly_chart(fig,width='content')
+                    st.plotly_chart(fig2,width='content')
+                    st.plotly_chart(fig3,width='content')         
+                    
+                with col2:
+            
+                    fig4 = px.line(vol_contribution, title='Market Volatility', width=800, height=400, render_mode = 'svg')
+                    fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
+                    fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                    
+                    fig5 = px.line(idiosyncratic_contribution, title='Market Intrinsic Volatility', width=800, height=400, render_mode = 'svg')
+                    fig5.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig5.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Idiosyncratic Vol"])
+                    fig5.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                    
+                    fig6 = px.line(weights_series, title='Market Weights', width=800, height=400, render_mode = 'svg')
+                    fig6.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig6.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
+                    fig6.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                    
+                    st.plotly_chart(fig4,width='content')
+                    st.plotly_chart(fig5,width='content')
+                    st.plotly_chart(fig6,width='content')
+            else:
+                
+                st.info("Load Market Drivers ⬅️")
