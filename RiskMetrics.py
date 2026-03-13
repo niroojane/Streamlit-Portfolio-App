@@ -558,7 +558,6 @@ class RiskAnalysis(Portfolio):
                     iterations=10000,
                     stress_factor=1.0):
         
-        #Return Multivariate Distribution of a portfolio taking into account potential correlation
         
         num_asset=len(self.returns.columns)
         
@@ -572,7 +571,9 @@ class RiskAnalysis(Portfolio):
         stress_matrix=np.diag(stress_vec)
         stress_matrix=pd.DataFrame(stress_matrix,columns=self.returns.columns,index=self.returns.columns)
         
-        stressed_cov=self.returns.cov().dot(stress_matrix)
+        cov = self.returns.cov()
+        stressed_cov = stress_matrix @ cov @ stress_matrix
+        
         mean=self.returns.mean()
         
         multivariate=np.random.multivariate_normal(mean,stressed_cov,iterations)
@@ -582,7 +583,7 @@ class RiskAnalysis(Portfolio):
     def gaussian_copula(self,iterations=10000,stress_factor=1.0):
         
        
-        randoms=np.random.normal(size=(10000,self.returns.shape[1])).T
+        randoms=np.random.normal(size=(iterations,self.returns.shape[1])).T
         corr_matrix=self.returns.corr()
         
         if type(stress_factor)==float:
@@ -659,11 +660,8 @@ class RiskAnalysis(Portfolio):
             
             stress_vec=stress_factor
         
-        
         #Stress the volatilities of the assets
-        
-        vol=self.returns.std()*np.sqrt(250)*stress_vec
-        
+        vol=self.returns.std()*np.sqrt(250)*stress_vec        
         #Create a diagonal matrix of the stress factors
         
         stress_matrix=np.diag(stress_vec)
@@ -671,8 +669,10 @@ class RiskAnalysis(Portfolio):
         
         #Find nearest PSD matrix and apply cholesky decomposition to create correaltion effect in Monte Carlo
         
-        stressed_cov=self.returns.cov().dot(stress_matrix)
+        cov = self.returns.cov()
+        stressed_cov = stress_matrix @ cov @ stress_matrix
         stressed_std=np.sqrt(np.diag(stressed_cov))
+        
         corr_matrix=stressed_cov/np.outer(stressed_std,stressed_std)
         
         if not is_pos_def(corr_matrix):
