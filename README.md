@@ -104,7 +104,7 @@ Example:
 | 2020-01-01 | 100     | 200     | 150     |
 | 2020-01-02 | 101     | 198     | 152     |
 
-## Use Binance API to retrieve prices for the second app
+## 📂 Use Binance API to retrieve prices for the second app
 
 https://cryptoptimization.streamlit.app
 
