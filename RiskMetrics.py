@@ -328,6 +328,21 @@ def build_constraint(prices, constraint_matrix):
 
     return constraints
 
+def set_symmetric(A, limit):
+    A = A.copy()
+    n = A.shape[0]
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            value = max(A[i, j], A[j, i])
+
+            if value < limit:
+                A[i, j] = A[j, i] = value
+            else:
+                A[i, j] = A[j, i] = 0
+
+    return A
+
     
 # ## Portfolio Construction
 
@@ -553,135 +568,198 @@ class RiskAnalysis(Portfolio):
         
         return VaR,CVaR
         
+    def multivariate_distribution(self, iterations=10000, stress_factor=1.0,mean_shock=1.0):
         
-    def multivariate_distribution(self,
-                    iterations=10000,
-                    stress_factor=1.0):
-        
-        
-        num_asset=len(self.returns.columns)
-        
-        if type(stress_factor)==float:
-            
-            stress_vec=np.linspace(stress_factor,stress_factor,num_asset)
-            
-        else:       
-            stress_vec=stress_factor
-            
-        stress_matrix=np.diag(stress_vec)
-        stress_matrix=pd.DataFrame(stress_matrix,columns=self.returns.columns,index=self.returns.columns)
-        
+        num_asset = len(self.returns.columns)
         cov = self.returns.cov()
-        stressed_cov = stress_matrix @ cov @ stress_matrix
         
-        mean=self.returns.mean()
+        if np.isscalar(stress_factor):
+            # Case 1: scalar stress
+            stress_vec = np.full(num_asset, stress_factor)
+            stress_matrix = np.diag(stress_vec)
+            stressed_cov = stress_matrix @ cov @ stress_matrix
         
-        multivariate=np.random.multivariate_normal(mean,stressed_cov,iterations)
+        elif isinstance(stress_factor, np.ndarray) and np.issubdtype(stress_factor.dtype, np.floating):
+            # Case 2: numpy matrix
+            stress_matrix = stress_factor  # assume already NxN
+            stress_vec = np.diag(stress_factor)  # optional if needed
+            stressed_cov = stress_matrix @ cov @ stress_matrix
+        
+        else:
+            # Case 3: list / vector
+            stress_vec = np.asarray(stress_factor, dtype=float)
+            stress_matrix = np.diag(stress_vec)
+            stressed_cov = stress_matrix @ cov @ stress_matrix
+
+        # Stressed covariance
+        
+        # Ensure positive definite
+        if not is_pos_def(stressed_cov):
+            stressed_cov = cov_nearest(stressed_cov)
+        
+        # Multivariate simulation
+        mean = self.returns.mean()*mean_shock
+        multivariate = np.random.multivariate_normal(mean, stressed_cov, iterations)
         
         return multivariate
-    
-    def gaussian_copula(self,iterations=10000,stress_factor=1.0):
         
-       
+    def gaussian_copula(self,iterations=10000,stress_factor=1.0,mean_shock=1.0):
         randoms=np.random.normal(size=(iterations,self.returns.shape[1])).T
-        corr_matrix=self.returns.corr()
+
+        cov = self.returns.cov()
+        corr_matrix = self.returns.corr()
+        std = self.returns.std()
         
-        if type(stress_factor)==float:
-            stress_vec=np.linspace(stress_factor,stress_factor,self.returns.shape[1])
-            
+        num_assets = self.returns.shape[1]
+        
+        if np.isscalar(stress_factor):
+        
+            # scalar volatility stress
+            stressed_std = std * stress_factor
+            stressed_corr = corr_matrix
+        
+        elif isinstance(stress_factor, np.ndarray):
+        
+            stress_factor = np.asarray(stress_factor)
+        
+            if stress_factor.ndim == 1:
+                # vector volatility stress
+                stressed_std = std * stress_factor
+                stressed_corr = corr_matrix
+        
+            elif stress_factor.ndim == 2:
+                # correlation stress matrix
+                stressed_std = std
+                stressed_corr = corr_matrix + np.tril(stress_factor)+np.tril(stress_factor).T
+        
         else:
+            raise ValueError("Invalid stress_factor type")
             
-            stress_vec=stress_factor
+        corr_matrix=np.clip(stressed_corr,-1,1)
         
         if not is_pos_def(corr_matrix):
             corr_matrix=cov_nearest(corr_matrix)
-        
+            
         cholesky=np.linalg.cholesky(corr_matrix)
         simulation=np.matmul(cholesky,randoms).T
         simulation=pd.DataFrame(simulation)
         simulation.columns=self.returns.columns
 
-        copula_sample=simulation*self.returns.std()*stress_vec+self.returns.mean()
+        copula_sample=simulation*stressed_std+self.returns.mean()*mean_shock
         
         return copula_sample
     
-    def t_copula(self,iterations=10000,stress_factor=1.0):
+    def t_copula(self,iterations=10000,stress_factor=1.0,mean_shock=1.0):
         
 
         df=self.returns.shape[1]*self.returns.shape[1]//2+self.returns.shape[1]
         ChiSquared = np.random.chisquare(df=df, size=iterations)
 
         randoms=np.random.normal(size=(iterations,self.returns.shape[1])).T
-        corr_matrix=self.returns.corr()
         
-        if type(stress_factor)==float:
-            stress_vec=np.linspace(stress_factor,stress_factor,self.returns.shape[1])
-            
-        else:    
-            stress_vec=stress_factor
+        cov = self.returns.cov()
+        corr_matrix = self.returns.corr()
+        std = self.returns.std()
         
+        num_assets = self.returns.shape[1]
+        
+        if np.isscalar(stress_factor):
+        
+            # scalar volatility stress
+            stressed_std = std * stress_factor
+            stressed_corr = corr_matrix
+        
+        elif isinstance(stress_factor, np.ndarray):
+        
+            stress_factor = np.asarray(stress_factor)
+        
+            if stress_factor.ndim == 1:
+                # vector volatility stress
+                stressed_std = std * stress_factor
+                stressed_corr = corr_matrix
+        
+            elif stress_factor.ndim == 2:
+                # correlation stress matrix
+                stressed_std = std
+                stressed_corr = corr_matrix + np.tril(stress_factor)+np.tril(stress_factor).T
+        
+        else:
+            raise ValueError("Invalid stress_factor type")
+        
+        corr_matrix=np.clip(stressed_corr,-1,1)
+
         if not is_pos_def(corr_matrix):
-            
             corr_matrix=cov_nearest(corr_matrix)
         
         cholesky=np.linalg.cholesky(corr_matrix)
             
-
         simulation=np.matmul(cholesky,randoms)/np.sqrt(ChiSquared/df)
         simulation=pd.DataFrame(simulation.T)
         simulation.columns=self.returns.columns
 
-        copula_sample=simulation*self.returns.std()*stress_vec+self.returns.mean()
+        copula_sample=simulation*stressed_std+self.returns.mean()*mean_shock
         
         return copula_sample
     
-    def gumbel_copula(self,iterations=10000,theta=2):
+    def gumbel_copula(self,iterations=10000,theta=2,stress_vec=1.0,mean_return_shock=1.0):
         
         uniform_sample=np.random.uniform(size=(iterations,self.returns.shape[1]))
         gumbel=np.exp(-(-np.log(uniform_sample))**(theta))
-        scaled_gumbel=norm.ppf(gumbel,loc=self.returns.mean(),scale=self.returns.std())
+        scaled_gumbel=norm.ppf(gumbel,loc=self.returns.mean()*mean_return_shock,scale=self.returns.std()*stress_vec)
 
         return scaled_gumbel
 
-    def monte_carlo(self,spot,horizon=20/250,iterations=10000,stress_factor=1.0):
+    def monte_carlo(self,spot,horizon=20/250,iterations=10000,stress_factor=1.0,mean_return_shock=1.0):
         
+  
+        num_asset = len(self.returns.columns)
         
-        num_asset=len(self.returns.columns)
-        #haltons=generate_halton(iterations,num_asset,base=2)
-        randoms=np.random.normal(size=(iterations,num_asset)).T
-        
-        # Create a stress matrix to stress the covariance matrix
-        
-        if type(stress_factor)==float:
-            
-            stress_vec=np.linspace(stress_factor,stress_factor,num_asset)
-            
-        else: 
-            
-            stress_vec=stress_factor
-        
-        #Stress the volatilities of the assets
-        vol=self.returns.std()*np.sqrt(250)*stress_vec        
-        #Create a diagonal matrix of the stress factors
-        
-        stress_matrix=np.diag(stress_vec)
-        stress_matrix=pd.DataFrame(stress_matrix,columns=self.returns.columns,index=self.returns.columns)
-        
-        #Find nearest PSD matrix and apply cholesky decomposition to create correaltion effect in Monte Carlo
+        randoms = np.random.normal(size=(iterations, num_asset)).T
         
         cov = self.returns.cov()
+        
+        if isinstance(stress_factor, np.ndarray):
+        
+            stress_factor = np.asarray(stress_factor)
+        
+            if stress_factor.ndim == 1:
+                stress_matrix = np.diag(stress_factor)
+        
+            elif stress_factor.ndim == 2:
+                stress_matrix = np.eye(num_asset)
+        
+            else:
+                raise ValueError("Invalid stress_factor shape")
+        
+        elif np.isscalar(stress_factor):
+        
+            stress_vec = np.full(num_asset, stress_factor)
+            stress_matrix = np.diag(stress_vec)
+        
+        else:
+        
+            stress_vec = np.asarray(stress_factor, dtype=float)
+            stress_matrix = np.diag(stress_vec)
+        
         stressed_cov = stress_matrix @ cov @ stress_matrix
-        stressed_std=np.sqrt(np.diag(stressed_cov))
         
-        corr_matrix=stressed_cov/np.outer(stressed_std,stressed_std)
+        stressed_std = np.sqrt(np.diag(stressed_cov))
+        corr_matrix = stressed_cov / np.outer(stressed_std, stressed_std)
         
+        if isinstance(stress_factor, np.ndarray) and stress_factor.ndim == 2:
+            corr_matrix = corr_matrix + np.tril(stress_factor) + np.tril(stress_factor).T
+
+        vol = np.sqrt(np.diag(stressed_cov))*np.sqrt(250)  # standard deviations
+        shocked_means=self.returns.mean()*250*mean_return_shock
+        
+        corr_matrix=np.clip(corr_matrix,-1,1)
+
         if not is_pos_def(corr_matrix):
-            corr_matrix=cov_nearest(corr_matrix)
+            corr_matrix = cov_nearest(corr_matrix)
         
         cholesky=np.linalg.cholesky(corr_matrix)
-            
-            
-        drift=np.exp(-0.5*horizon*vol**2)
+        
+        drift = np.exp((shocked_means - 0.5 * vol**2) * horizon)        
         factors=spot*drift
         factors_vec=factors.to_numpy().reshape(num_asset,-1)
                 
