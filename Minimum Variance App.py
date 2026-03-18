@@ -1148,7 +1148,11 @@ with main_tabs[2]:
                 st.session_state.corr_data = new_corr_df
 
                 st.rerun()
-
+                
+            if "fund_results" not in st.session_state:
+                st.session_state.fund_results = None
+                st.session_state.var_scenarios=None
+                st.session_state.cvar_scenarios=None
             
             if var_button:
                 with st.spinner("Computing VaR...",show_time=True):
