@@ -498,7 +498,7 @@ class Portfolio:
             target_return_constraint = {'type': 'eq', 'fun': lambda weights, mu=mu: portfolio_return(weights) - mu}
             result = minimize(
                 objective,
-                x0=np.ones(num_assets) / num_assets,
+                x0= frontier_weights[-1] if frontier_weights else np.ones(num_assets)/num_assets,
                 method='SLSQP',
                 bounds=bounds,
 
