@@ -500,7 +500,7 @@ with main_tabs[1]:
                 drawdown = (cumulative_results - cumulative_results.cummax()) / cumulative_results.cummax()
                 rolling_vol_ptf = cumulative_results.pct_change().rolling(window_vol).std() * np.sqrt(260)
                 
-                frontier_indicators, fig4 = get_frontier(range_returns, res['alloc_df'])
+                frontier_indicators, fig4 = get_frontier(range_returns, res['alloc_df'],constraints)
         
                 fig = px.line(cumulative_results, title='Performance', width=800, height=400, render_mode = 'svg')
                 fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
