@@ -464,6 +464,7 @@ class Portfolio:
     def efficient_frontier(self,constraints=False,points=100):
 
         num_assets = self.returns.shape[1]
+        bounds = [(0, 1) for _ in range(num_assets)]
 
         def portfolio_return(weights):
             return weights @ self.returns.mean()*252
@@ -485,14 +486,30 @@ class Portfolio:
         else:
 
             constraints=[{'type': 'eq', 'fun': sum_equal_one}]+constraints
+        
+        res_min = minimize(portfolio_risk,
+                           np.ones(num_assets)/num_assets,
+                           bounds=bounds,
+                           constraints=constraints)
+    
+        res_max = minimize(lambda w: -portfolio_return(w),
+                           np.ones(num_assets)/num_assets,
+                           bounds=bounds,
+                           constraints=constraints)
+    
+        if not res_min.success or not res_max.success:
+            raise ValueError("Constraints make optimization infeasible")
+    
+        min_ret = portfolio_return(res_min.x)
+        max_ret = portfolio_return(res_max.x)
 
+        mus = np.linspace(min_ret, max_ret, points)
 
-        bounds = [(0, 1) for _ in range(num_assets)]
         frontier_weights = []
         frontier_returns = []
         frontier_risks = []
         frontier_sharpe_ratio=[]
-        mus = np.linspace(min(self.returns.mean()*252), max(self.returns.mean()*252), points)
+        # mus = np.linspace(min(self.returns.mean()*252), max(self.returns.mean()*252), points)
 
         for mu in mus:
             target_return_constraint = {'type': 'eq', 'fun': lambda weights, mu=mu: portfolio_return(weights) - mu}
@@ -512,7 +529,86 @@ class Portfolio:
                 frontier_sharpe_ratio.append(portfolio_return(weights)/portfolio_risk(weights))
 
         return frontier_weights, frontier_returns, frontier_risks,frontier_sharpe_ratio
+        
+    def efficient_frontier2(self, extra_constraints=None, points=100):
     
+        num_assets = self.returns.shape[1]
+    
+        mean_returns = self.returns.mean() * 252
+        cov_matrix = self.returns.cov() * 252
+    
+        def portfolio_return(w):
+            return w @ mean_returns
+    
+        def portfolio_risk(w):
+            return np.sqrt(w @ cov_matrix @ w)
+    
+        # Base constraint
+        base_constraints = [{'type': 'eq', 'fun': lambda w: np.sum(w) - 1}]
+    
+        if extra_constraints is None:
+            constraints = base_constraints
+        else:
+            constraints = base_constraints + extra_constraints
+    
+        bounds = [(0, 1)] * num_assets
+        
+        #✅ Compute feasible return range UNDER constraints
+        res_min = minimize(portfolio_risk,
+                           np.ones(num_assets)/num_assets,
+                           bounds=bounds,
+                           constraints=constraints)
+    
+        res_max = minimize(lambda w: -portfolio_return(w),
+                           np.ones(num_assets)/num_assets,
+                           bounds=bounds,
+                           constraints=constraints)
+    
+        if not res_min.success or not res_max.success:
+            raise ValueError("Constraints make optimization infeasible")
+    
+        min_ret = portfolio_return(res_min.x)
+        max_ret = portfolio_return(res_max.x)
+
+        mus = np.linspace(min_ret, max_ret, points)
+    
+        frontier_weights = []
+        frontier_returns = []
+        frontier_risks = []
+        frontier_sharpe_ratio=[]
+        
+        for mu in mus:
+    
+            target_constraint = {
+                'type': 'eq',
+                'fun': lambda w, mu=mu: portfolio_return(w) - mu
+            }
+    
+            result = minimize(
+                portfolio_risk,
+                x0=frontier_weights[-1] if frontier_weights else np.ones(num_assets)/num_assets,
+                method='SLSQP',
+                bounds=bounds,
+                constraints=constraints + [target_constraint]
+            )
+    
+            if result.success:
+                w = result.x
+    
+                frontier_weights.append(w)
+                frontier_returns.append(portfolio_return(w))
+                frontier_risks.append(portfolio_risk(w))
+                frontier_sharpe_ratio.append(portfolio_return(w)/portfolio_risk(w))
+
+            else:
+                # keep structure consistent
+                frontier_weights.append(np.nan)
+                frontier_returns.append(np.nan)
+                frontier_risks.append(np.nan)
+                frontier_sharpe_ratio.append(np.nan)
+
+        return frontier_weights, frontier_returns, frontier_risks,frontier_sharpe_ratio 
+      
     def black_Litterman(self,P,Q,weights,risk_aversion,tau=0.025):
         
         implied_returns=risk_aversion*self.returns.cov().dot(weights).squeeze()

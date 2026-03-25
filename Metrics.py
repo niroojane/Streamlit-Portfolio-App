@@ -22,8 +22,8 @@ from io import BytesIO
 import requests
 import base64
 
-from RiskMetrics import *
-from Rebalancing import *
+from .RiskMetrics import *
+from .Rebalancing import *
 
 def display_scrollable_df(df, max_height="50vh", max_width="90vw"):
     style = f"""
@@ -58,8 +58,6 @@ def get_expected_metrics(returns,dataframe):
     for idx in dataframe.index:
         allocation_dict[idx]=dataframe.loc[idx].to_numpy()
 
-
-    
     metrics={}
     metrics['Expected Returns']={}
     metrics['Expected Volatility']={}
@@ -354,9 +352,18 @@ def get_calendar_graph(performance_fund,fund='Fund',benchmark='Bitcoin',freq='Ye
         
     return dico_fig
             
-def get_frontier(returns,dataframe):
+def get_frontier(returns,dataframe,cons=None):
+    
     portfolio=RiskAnalysis(returns)
     frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
+
+    if cons is not None:
+        frontier_weights_c, frontier_returns_c, frontier_risks_c, frontier_sharpe_ratio_c = portfolio.efficient_frontier(constraints=cons)
+        frontier_c = pd.DataFrame({
+            "Returns Constrained": frontier_returns_c,
+            "Volatility Constrained": frontier_risks_c,
+            "Sharpe Ratio Constrained": frontier_sharpe_ratio_c,
+        })
     
     weight_matrix={}
 
@@ -374,7 +381,7 @@ def get_frontier(returns,dataframe):
         metrics['Returns'][key]=(np.round(portfolio.performance(weight_matrix[key]), 4))
         metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
         metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
-    
+
     
     frontier = pd.DataFrame(
         {
@@ -384,31 +391,77 @@ def get_frontier(returns,dataframe):
         }
     )
     
-    fig = px.scatter(
-        frontier,
-        y="Returns",
-        x="Volatility",
-        color="Sharpe Ratio",
-        color_continuous_scale='blues',
-    )
+    # fig = px.scatter(
+    #     frontier,
+    #     y="Returns",
+    #     x="Volatility",
+    #     color="Sharpe Ratio",
+    #     color_continuous_scale='blues',
+    # )
+
     
+    fig = go.Figure()
+
+    fig.add_scatter(
+        x=frontier['Volatility'],
+        y=frontier['Returns'],
+        mode='markers',
+        marker=dict(
+            color=frontier['Sharpe Ratio'],
+            colorscale='Blues'
+        ),
+        customdata=frontier[['Sharpe Ratio']],  # 👈 extra data
+        hovertemplate=
+            "Volatility: %{x}<br>" +
+            "Returns: %{y}<br>" +
+            "Sharpe: %{customdata[0]}<extra></extra>",
+        name='Efficient Frontier'
+    )
+
+    if cons is not None:
+        fig.add_scatter(
+            x=frontier_c['Volatility Constrained'],
+            y=frontier_c['Returns Constrained'],
+            mode='markers',
+            marker=dict(
+                color=frontier_c['Sharpe Ratio Constrained'],
+                colorscale='Reds',
+                size=4,
+                opacity=0.6,
+                line=dict(width=0.5, color='DarkRed')
+            ),
+            customdata=frontier_c[['Sharpe Ratio Constrained']],
+            hovertemplate=
+                "Volatility: %{x}<br>" +
+                "Returns: %{y}<br>" +
+                "Sharpe: %{customdata[0]:.2f}<extra></extra>",
+            name='Frontier Constrained',
+            showlegend=True
+        )
+        
     for key in weight_matrix:
     
         fig.add_scatter(
             x=[metrics["Volatility"][key]],
             y=[metrics["Returns"][key]],
             mode="markers",
+            customdata=[[metrics['Sharpe Ratio'][key]]],
+            hovertemplate=
+                "Volatility: %{x}<br>" +
+                "Returns: %{y}<br>" +
+                "Sharpe: %{customdata[0]:.2f}<extra></extra>",
             marker=dict(color="orange", size=8, symbol="x"),
             name=key,
+            showlegend=False
         )
-        
-        
+    
     fig.add_scatter(
         x=[metrics["Volatility"]['Optimal Portfolio']],
         y=[metrics["Returns"]['Optimal Portfolio']],
         mode="markers",
         marker=dict(color="red", size=8, symbol="x"),
         name='Optimal Portfolio',
+        showlegend=False
     )
     
     fig.update_layout(
@@ -423,7 +476,7 @@ def get_frontier(returns,dataframe):
         paper_bgcolor="black"  
     )
     
-    fig.update_layout(showlegend=False)
+    fig.update_layout(showlegend=True)
     fig.update_layout(hoverlabel_namelength=-1)
     indicators = pd.DataFrame(metrics,index=weight_matrix.keys()).T
 
