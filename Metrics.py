@@ -22,8 +22,8 @@ from io import BytesIO
 import requests
 import base64
 
-from .RiskMetrics import *
-from .Rebalancing import *
+from RiskMetrics import *
+from Rebalancing import *
 
 def display_scrollable_df(df, max_height="50vh", max_width="90vw"):
     style = f"""
