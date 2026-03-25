@@ -455,15 +455,12 @@ if uploaded_file:
         variance_contrib_summary.loc['Total']=variance_contrib_summary.sum(axis=0)
         variance_contrib_summary=variance_contrib_summary.sort_values(by=variance_contrib_summary.columns[0],ascending=False)
         
-        st.cache_data
-        
+        @st.cache_data 
         def get_frontier_streamlit(returns,global_allocation,constraints):
             indicators,fig=get_frontier(returns,global_allocation,constraints)
             return indicators,fig
 
         
-        global_allocation=pd.concat([former_results,current_results_dataframe],axis=0)
-
         indicators,fig=get_frontier_streamlit(returns,current_results_dataframe,constraints)
             
         col1,col2=st.columns([1,1])
