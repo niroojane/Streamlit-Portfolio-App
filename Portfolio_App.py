@@ -14,6 +14,7 @@ import datetime
 
 from RiskMetrics import Portfolio, RiskAnalysis,create_constraint,diversification_constraint
 from Rebalancing import *
+from Metrics import *
 
 st.set_page_config(layout="wide")
 
@@ -392,15 +393,15 @@ if uploaded_file:
         
         optimal_results={}  
 
-        optimal_results['Current Optimal Portfolio']=optimized_weights.tolist()
-        optimal_results['Current Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
-        optimal_results['Current Minimum Variance Portfolio']=minvar_weights.tolist()
-        optimal_results['Current Minimum Variance Constrained Portfolio']=minvar_weights_constraint
-        optimal_results['Current Maximum Diversification Portfolio']=max_diversification.tolist()
-        optimal_results['Current Maximum Diversification Portfolio Constrained']=max_diversification_weights_constraint.tolist()
-        optimal_results['Current Risk Parity Portfolio']=risk_parity_weights.tolist()
-        optimal_results['Current Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-        optimal_results['Current Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
+        optimal_results['Optimal Portfolio']=optimized_weights.tolist()
+        optimal_results['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
+        optimal_results['Minimum Variance Portfolio']=minvar_weights.tolist()
+        optimal_results['Minimum Variance Constrained Portfolio']=minvar_weights_constraint
+        optimal_results['Maximum Diversification Portfolio']=max_diversification.tolist()
+        optimal_results['Maximum Diversification Portfolio Constrained']=max_diversification_weights_constraint.tolist()
+        optimal_results['Risk Parity Portfolio']=risk_parity_weights.tolist()
+        optimal_results['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
+        optimal_results['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
         optimal_results['Equal Weights']=equal_weights.tolist()
         
         former_results={}
@@ -449,45 +450,21 @@ if uploaded_file:
             metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
             temp=pd.DataFrame(portfolio.var_contrib(weight_matrix[key])[0]['Vol Contribution'])*100
             temp.columns=[key]
+            
             variance_contrib_summary=pd.concat([variance_contrib_summary,temp],axis=1)
         variance_contrib_summary.loc['Total']=variance_contrib_summary.sum(axis=0)
         variance_contrib_summary=variance_contrib_summary.sort_values(by=variance_contrib_summary.columns[0],ascending=False)
         
-        @st.cache_data
-
-
+        st.cache_data
         
-        def get_frontier(returns):
-            portfolio_class=RiskAnalysis(returns)
-            return portfolio_class.efficient_frontier()
-        
-        # frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
-        frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = get_frontier(returns)
-        frontier = pd.DataFrame(
-            {
-                "Returns": frontier_returns,
-                "Volatility": frontier_risks,
-                "Sharpe Ratio": frontier_sharpe_ratio,
-            }
-        )
-    
-        fig = px.scatter(
-            frontier,
-            y="Returns",
-            x="Volatility",
-            color="Sharpe Ratio",
-            color_continuous_scale='blues',
-        )
+        def get_frontier_streamlit(returns,global_allocation,constraints):
+            indicators,fig=get_frontier(returns,global_allocation,constraints)
+            return indicators,fig
 
         
-        for key in weight_matrix:
-            
-            fig.add_scatter(
-                x=[metrics["Volatility"][key]],
-                y=[metrics["Returns"][key]],
-                mode="markers",
-                marker=dict(color="orange", size=8, symbol="x"),
-                name=key)
+        global_allocation=pd.concat([former_results,current_results_dataframe],axis=0)
+
+        indicators,fig=get_frontier_streamlit(returns,current_results_dataframe,constraints)
             
         col1,col2=st.columns([1,1])
         with col1:
@@ -505,8 +482,6 @@ if uploaded_file:
     
             st.plotly_chart(fig,width='content')
         
-        indicators = pd.DataFrame(metrics,index=weight_matrix.keys())
-
 
         st.subheader("Expected Return")
         
