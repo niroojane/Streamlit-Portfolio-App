@@ -445,25 +445,33 @@ def get_frontier(returns,dataframe,cons=None):
             x=[metrics["Volatility"][key]],
             y=[metrics["Returns"][key]],
             mode="markers",
+            text=[key],  # 👈 pass it here
             customdata=[[metrics['Sharpe Ratio'][key]]],
             hovertemplate=
                 "Volatility: %{x}<br>" +
                 "Returns: %{y}<br>" +
-                "Sharpe: %{customdata[0]:.2f}<extra></extra>",
+                "Sharpe: %{customdata[0]:.2f}<br>" +
+                "Portfolio: %{text}<extra></extra>",
             marker=dict(color="orange", size=8, symbol="x"),
             name=key,
             showlegend=False
         )
-    
     fig.add_scatter(
         x=[metrics["Volatility"]['Optimal Portfolio']],
         y=[metrics["Returns"]['Optimal Portfolio']],
         mode="markers",
+        text=['Optimal Portfolio'],  # 👈 pass it here
+        customdata=[[metrics['Sharpe Ratio']['Optimal Portfolio']]],
+        hovertemplate=
+            "Volatility: %{x}<br>" +
+            "Returns: %{y}<br>" +
+            "Sharpe: %{customdata[0]:.2f}<br>" +
+            "Portfolio: %{text}<extra></extra>",
         marker=dict(color="red", size=8, symbol="x"),
-        name='Optimal Portfolio',
+        name=key,
         showlegend=False
     )
-    
+
     fig.update_layout(
         showlegend=False, 
         hoverlabel_namelength=-1,
@@ -481,24 +489,3 @@ def get_frontier(returns,dataframe,cons=None):
     indicators = pd.DataFrame(metrics,index=weight_matrix.keys()).T
 
     return indicators,fig
-
-def read_excel_from_url(url,index_col=None):
-        try:
-            response = requests.get(url)
-            response.raise_for_status()  # raises HTTPError for 4xx / 5xx
-    
-            return pd.read_excel(BytesIO(response.content), index_col=index_col)
-    
-        except requests.exceptions.HTTPError as e:
-            # File not found (404) or server error
-            print(f"HTTP error while downloading {url}: {e}")
-    
-        except ValueError as e:
-            # File exists but is not a valid Excel file
-            print(f"Invalid Excel file at {url}: {e}")
-    
-        except RequestException as e:
-            # Network issues, timeout, DNS, etc.
-            print(f"Request failed for {url}: {e}")
-    
-        return None      
