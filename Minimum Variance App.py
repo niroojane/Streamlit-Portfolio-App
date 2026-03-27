@@ -12,12 +12,12 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from RiskMetrics import *
-from Price_Endpoint import *
-from Stock_Data import get_close
-from Rebalancing import *
+from src.RiskMetrics import *
+from src.Price_Endpoint import *
+from src.Stock_Data import get_close
+from src.Rebalancing import *
 
-from Metrics import *
+from src.Metrics import *
 
 
 st.set_page_config(layout="wide")

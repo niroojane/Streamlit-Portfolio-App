@@ -12,9 +12,9 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm, chi2,gumbel_l
 import datetime
 
-from RiskMetrics import Portfolio, RiskAnalysis,create_constraint,diversification_constraint
-from Rebalancing import *
-from Metrics import *
+from src.RiskMetrics import Portfolio, RiskAnalysis,create_constraint,diversification_constraint
+from src.Rebalancing import *
+from src.Metrics import *
 
 st.set_page_config(layout="wide")
 
