@@ -376,8 +376,6 @@ if uploaded_file:
                     constraint = create_constraint(sign, limit, position)
                     
                 constraints.extend(constraint)
-                
-        
         except Exception as e:
             pass
 
@@ -456,8 +454,8 @@ if uploaded_file:
         variance_contrib_summary=variance_contrib_summary.sort_values(by=variance_contrib_summary.columns[0],ascending=False)
         
         @st.cache_data 
-        def get_frontier_streamlit(returns,global_allocation,constraints):
-            indicators,fig=get_frontier(returns,global_allocation,constraints)
+        def get_frontier_streamlit(returns,global_allocation,_constraints):
+            indicators,fig=get_frontier(returns,global_allocation,_constraints)
             return indicators,fig
 
         
@@ -467,7 +465,6 @@ if uploaded_file:
         with col1:
             st.subheader('Efficient Frontier')
 
-            fig.update_layout(showlegend=False)
             fig.update_layout(hoverlabel_namelength=-1)
             st.plotly_chart(fig,width='content')
 
