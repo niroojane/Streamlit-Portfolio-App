@@ -162,14 +162,16 @@ Custom modules:
 
 ```
 .
-├── Portfolio_App.py        #  Streamlit application with manual input
-├── Minimum_Variance_App.py #  Streamlit application for crypto market
-├── RiskMetrics.py          # Portfolio & risk calculations
-├── Rebalancing.py          # Rebalancing logic
-├── Metrics.py              # Returns metrics
-├── Price_Endpoint.py       # Binance API
-├── Stock_Data.py           # Yahoo Finance API
-├── Gradio.py               # App built using Gradio (not updated)
+
+├── Portfolio_App.py            #  Streamlit application with manual input
+├── Minimum_Variance_App.py     #  Streamlit application for crypto market
+├──src/
+   ├── RiskMetrics.py           # Portfolio & risk calculations
+   ├── Rebalancing.py           # Rebalancing logic
+   ├── Metrics.py               # Returns metrics
+   ├── Price_Endpoint.py        # Binance API
+   └── Stock_Data.py            # Yahoo Finance API
+├── Gradio.py                   # App built using Gradio (not updated)
 ├── requirements.txt
 └── README.md
 ```
