@@ -103,7 +103,7 @@ def get_portfolio_risk(dataframe,prices,portfolio_returns,benchmark):
 
     allocation_dict={}
     
-    returns=prices.pct_change()
+    returns=prices.pct_change(fill_method=None)
     
     for idx in dataframe.index:
         allocation_dict[idx]=dataframe.loc[idx].to_numpy()
@@ -163,7 +163,7 @@ def get_asset_risk(prices):
 
     dates_drawdown=((prices-prices.cummax())/prices.cummax()).idxmin().dt.date
     
-    vol=prices.pct_change().iloc[-260:].std()*np.sqrt(260)
+    vol=prices.pct_change(fill_method=None).iloc[-260:].std()*np.sqrt(260)
     weekly_vol=prices.resample('W').last().iloc[-153:].pct_change().std()*np.sqrt(52)
     monthly_vol_1Y=prices.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
     monthly_vol_5Y=prices.resample('ME').last().iloc[-181:].pct_change().std()*np.sqrt(12)
