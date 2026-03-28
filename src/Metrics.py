@@ -22,8 +22,8 @@ from io import BytesIO
 import requests
 import base64
 
-from src.RiskMetrics import *
-from src.Rebalancing import *
+from .RiskMetrics import *
+from .Rebalancing import *
 
 def display_scrollable_df(df, max_height="50vh", max_width="90vw"):
     style = f"""
@@ -130,8 +130,8 @@ def get_portfolio_risk(dataframe,prices,portfolio_returns,benchmark):
 
     dates_drawdown=((portfolio_returns-portfolio_returns.cummax())/portfolio_returns.cummax()).idxmin().dt.date
     
-    vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
-    monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
+    vol=portfolio_returns.pct_change(fill_method=None).iloc[:].std()*np.sqrt(260)
+    monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change(fill_method=None).std()*np.sqrt(12)
 
     drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
     Q=0.05
@@ -489,3 +489,24 @@ def get_frontier(returns,dataframe,cons=None):
     indicators = pd.DataFrame(metrics,index=weight_matrix.keys()).T
 
     return indicators,fig
+
+def read_excel_from_url(url,index_col=None):
+        try:
+            response = requests.get(url)
+            response.raise_for_status()  # raises HTTPError for 4xx / 5xx
+    
+            return pd.read_excel(BytesIO(response.content), index_col=index_col)
+    
+        except requests.exceptions.HTTPError as e:
+            # File not found (404) or server error
+            print(f"HTTP error while downloading {url}: {e}")
+    
+        except ValueError as e:
+            # File exists but is not a valid Excel file
+            print(f"Invalid Excel file at {url}: {e}")
+    
+        except RequestException as e:
+            # Network issues, timeout, DNS, etc.
+            print(f"Request failed for {url}: {e}")
+    
+        return None      
