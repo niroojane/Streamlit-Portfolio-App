@@ -608,7 +608,18 @@ with main_tabs[1]:
             
                 res = st.session_state.results
                 
-                st.subheader("Weights Matrix")
+                col1,col2,col3=st.columns(3)
+                with col1:
+                    st.subheader("Strategy Matrix")
+                    st.dataframe(res["rolling_optimization"],width='stretch')
+                with col2:
+
+                    st.subheader("Core Matrix")
+                    st.dataframe(res["core_strat"],width='stretch')
+                with col3:
+                    st.subheader("Overlay Matrix")
+                    st.dataframe(res["total_overlay"],width='stretch')
+
                 st.dataframe(res["rolling_optimization"],width='stretch')
                 st.subheader("Allocation Table")
                 st.dataframe(res["alloc_df"],width='stretch')
