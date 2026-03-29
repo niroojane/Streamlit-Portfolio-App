@@ -370,11 +370,35 @@ with main_tabs[1]:
     
             options_strat = list(dico_strategies.keys())
             rebalancing_frequency = ['Monthly', 'Quarterly', 'Yearly']
-            
+           
+            st.subheader("Core Strategy")
+
             selected_strategy = st.selectbox("Strategy:", options_strat, index=0)
             benchmark_tracking_error = st.selectbox("Benchmark:", list(allocation_dataframe.index), index=0)
             selected_frequency = st.selectbox("Rebalancing Frequency:", rebalancing_frequency, index=0)
             window_vol = st.number_input("Sliding Window Size:", min_value=1, value=252, step=1)
+                        
+            st.subheader("Overlay")
+            drop_down_list_strat=list(dico_strategies.keys())
+
+            column_config = {
+                'Strategy': st.column_config.SelectboxColumn(
+                    options=drop_down_list_strat
+                ),
+                'Limit': st.column_config.NumberColumn()  # optional but recommended
+            }
+
+            data_overlay = pd.DataFrame({
+                'Strategy': [None],
+                'Limit': [None]
+            })            
+            
+            # Create the editable data editor with dropdown
+            overlay_dataframe = st.data_editor(
+            data_overlay,
+            column_config=column_config,
+            num_rows="dynamic",  # Allow rows to be added dynamically
+            )
             
             if "run_optimization" not in st.session_state:
                 st.session_state.run_optimization = False
@@ -410,8 +434,11 @@ with main_tabs[1]:
             
                 if len(dates_end) < 2:
                     st.warning("⚠️ Not enough anchor dates for rolling optimization.")
-            
                 results_dict = {}
+                overlay_dict={}
+                
+                
+                strategy_limits = overlay_dataframe.set_index("Strategy")["Limit"].to_dict()
                 for i in range(len(dates_end) - 1):
                     dataset = range_returns.loc[dates_end[i]:dates_end[i+1]]
                     risk = RiskAnalysis(dataset)
@@ -421,11 +448,57 @@ with main_tabs[1]:
                         objective=dico_strategies[selected_strategy],
                         constraints=constraints
                     )
+                    
+                    for strat_name, limit in strategy_limits.items():
+                        if pd.isna(strat_name):
+                            continue
+                    
+                        if strat_name not in dico_strategies:
+                            continue
+                    
+                        overlay_dict.setdefault(strat_name, {})
+                    
+                        overlay_weights = risk.optimize(
+                            objective=dico_strategies[strat_name],
+                            constraints=constraints  # you can inject limit here
+                        )
+                    
+                        overlay_dict[strat_name][date] = np.round(overlay_weights, 6)
+                        
                     results_dict[date] = np.round(optimal, 6)
-            
+                
+
                 rolling_optimization = pd.DataFrame(results_dict, index=dataframe.columns).T
-                rolling_optimization.loc[dates_end[0]] = 1 / len(dataframe.columns)
-                rolling_optimization = rolling_optimization.sort_index()
+
+                core_strat=rolling_optimization.copy()
+                core_weights = 1
+                total_overlay = pd.DataFrame(0, index=core_strat.index, columns=core_strat.columns)
+
+                for strat_name, limit in strategy_limits.items():
+                    if strat_name not in dico_strategies:
+                        continue
+                
+                    strat_key = dico_strategies[strat_name]
+                
+                    overlay_df = (
+                        pd.DataFrame(overlay_dict[strat_name], index=dataframe.columns)
+                        .T
+                        .sort_index()
+                        * limit
+                    )
+                
+                    total_overlay = total_overlay.add(overlay_df, fill_value=0)
+                
+                    # Update remaining core weight
+                    core_weights -= limit
+
+                rolling_optimization = rolling_optimization * core_weights + total_overlay
+                if not rolling_optimization.empty:
+                    first_row = pd.Series(1 / len(dataframe.columns), index=dataframe.columns, name=dates_end[0])
+                    rolling_optimization = pd.concat([pd.DataFrame([first_row]), rolling_optimization])
+                    core_strat= pd.concat([pd.DataFrame([first_row]), core_strat])
+                    total_overlay= pd.concat([pd.DataFrame([first_row]), total_overlay/(1-core_weights)])
+
         
                 model = pd.DataFrame(rolling_optimization.iloc[-2])
                 model.columns = ["Model"]
@@ -437,8 +510,13 @@ with main_tabs[1]:
                     alloc_df = pd.concat([alloc_df, model.T], axis=0)
             
                 quantities = rebalanced_dynamic_quantities(dataframe, rolling_optimization)
-                performance_fund = pd.DataFrame({'Fund': (quantities * dataframe).sum(axis=1)})
-            
+                quantities_core = rebalanced_dynamic_quantities(dataframe, core_strat)
+                quantities_overlay = rebalanced_dynamic_quantities(dataframe, total_overlay)
+    
+                performance_fund = pd.DataFrame({'Fund': (quantities * dataframe).sum(axis=1),
+                                                 'Core':(quantities_core * dataframe).sum(axis=1),
+                                                 'Overlay':(quantities_overlay * dataframe).sum(axis=1)})
+                
                 if 'BTCUSDT' in range_prices.columns:
                     performance_fund['Bitcoin'] = range_prices['BTCUSDT']
                 
@@ -450,21 +528,24 @@ with main_tabs[1]:
                 date_drawdown = drawdown.idxmin().dt.date
                 max_drawdown = drawdown.min()
             
-                metrics = {}
-                metrics['Tracking Error'] = ((performance_pct['Fund'] - performance_pct['Bitcoin']).std() * np.sqrt(252)).round(4)
-                metrics['Fund Vol'] = (performance_pct['Fund'].std() * np.sqrt(252)).round(4)
-                metrics['Bitcoin Vol'] = (performance_pct['Bitcoin'].std() * np.sqrt(252)).round(4)
-                metrics['Fund Return'] = (performance_fund['Fund'].iloc[-2] / performance_fund['Fund'].iloc[0]).round(4)
-                metrics['Bitcoin Return'] = (performance_fund['Bitcoin'].iloc[-2] / performance_fund['Bitcoin'].iloc[0]).round(4)
-                metrics['Sharpe Ratio'] = ((1 + metrics['Fund Return']) ** (1 / len(set(returns_to_use.index.year))) / metrics['Fund Vol']).round(4)
-                metrics['Bitcoin Sharpe Ratio'] = ((1 + metrics['Bitcoin Return']) ** (1 / len(set(returns_to_use.index.year))) / metrics['Bitcoin Vol']).round(4)
-                metrics['Fund Drawdown'] = max_drawdown['Fund'].round(4)
-                metrics['Bitcoin Drawdown'] = max_drawdown['Bitcoin'].round(4)
-                metrics['Fund Date Drawdown'] = date_drawdown['Fund']
-                metrics['Bitcoin Date Drawdown'] = date_drawdown['Bitcoin']
-            
-                indicators = pd.DataFrame(metrics.values(), index=metrics.keys(), columns=['Indicators'])
+                metrics=pd.DataFrame()
+                metrics['Returns']=(performance_fund.iloc[-2]/performance_fund.iloc[0]).round(4)
+                metrics['Volatility']=(performance_pct.std()*np.sqrt(252)).round(4)
+                metrics['Sharpe Ratio']=((1+metrics['Returns'])**(1/len(set(returns_to_use.index.year)))/metrics['Volatility']).round(4)
+                metrics['Drawdown']=(max_drawdown).round(4)
+                metrics['Date Drawdown']=date_drawdown
+                excess_returns_to_btc = performance_pct.loc[:, performance_pct.columns != 'Bitcoin'].sub(
+                    performance_pct['Bitcoin'], axis=0
+                )
+                metrics['Tracking Error to Bitcoin']=((excess_returns_to_btc).std()*np.sqrt(252)).round(4)
                 
+                excess_returns_to_core = performance_pct.loc[:, performance_pct.columns != 'Core'].sub(
+                    performance_pct['Core'], axis=0
+                )
+                metrics['Tracking Error to Core']=((excess_returns_to_core).std()*np.sqrt(252)).round(4)
+                metrics=metrics.fillna(0).T
+                indicators=metrics
+
                 cumulative_performance = performance_pct.loc[mask]
                 cumulative_performance.iloc[0] = 0
                 cumulative_results = (1 + cumulative_performance).cumprod() * 100
@@ -476,12 +557,16 @@ with main_tabs[1]:
         
                 st.session_state.results = {
                     "rolling_optimization": rolling_optimization,
+                    "core_strat":core_strat,
+                    "total_overlay":total_overlay,
                     "alloc_df": alloc_df,
                     "quantities": quantities,
+                    "quantities_core":quantities_core,
+                    "quantities_overlay":quantities_overlay,
                     "performance_pct": performance_pct,
                     "cumulative_results":cumulative_results,
                     "indicators":indicators}
-                
+            
             if st.session_state.results is not None:
                 
                 selmin, selmax = st.session_state['strategy_tab']
@@ -714,7 +799,11 @@ with main_tabs[2]:
                 returns_to_use = st.session_state.returns_to_use
                 res=st.session_state.results
                 allocation_dataframe=res["alloc_df"]
+                
                 quantities=res['quantities']
+                quantities_core=res['quantities_core']
+                quantities_overlay=res['quantities_overlay']
+
         
                 max_value = dataframe.index.max().strftime('%Y-%m-%d')
                 min_value = dataframe.index.min().strftime('%Y-%m-%d')
@@ -756,6 +845,17 @@ with main_tabs[2]:
                     portfolio=quantities.loc[range_prices.index]*range_prices
                     model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
                     series_dict['Fund']=model_weights
+
+                if not quantities_overlay.empty:
+                    portfolio=quantities_overlay.loc[range_prices.index]*range_prices
+                    model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
+                    series_dict['Overlay']=model_weights                
+                    
+                if not quantities_core.empty:
+                    portfolio=quantities_core.loc[range_prices.index]*range_prices
+                    model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
+                    series_dict['Core']=model_weights         
+                    
                 
                 options_vol=list(series_dict.keys())
                 selected_fund_to_decompose=st.selectbox("Fund:",options=options_vol,index=len(options_vol)-1,key='selected_fund_risk_decomposition')
@@ -839,8 +939,12 @@ with main_tabs[2]:
                 returns_to_use = st.session_state.returns_to_use
                 res=st.session_state.results
                 allocation_dataframe=res["alloc_df"]
+                
                 quantities=res['quantities']
-        
+                quantities=res['quantities']
+                quantities_core=res['quantities_core']
+                quantities_overlay=res['quantities_overlay']
+                
                 max_value = dataframe.index.max().strftime('%Y-%m-%d')
                 min_value = dataframe.index.min().strftime('%Y-%m-%d')
                 max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
@@ -881,6 +985,16 @@ with main_tabs[2]:
                     portfolio=quantities.loc[range_prices.index]*range_prices
                     model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
                     series_dict['Fund']=model_weights
+
+                if not quantities_overlay.empty:
+                    portfolio=quantities_overlay.loc[range_prices.index]*range_prices
+                    model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
+                    series_dict['Overlay']=model_weights                
+                    
+                if not quantities_core.empty:
+                    portfolio=quantities_core.loc[range_prices.index]*range_prices
+                    model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
+                    series_dict['Core']=model_weights   
                 
                 options_te=list(series_dict.keys())
     
