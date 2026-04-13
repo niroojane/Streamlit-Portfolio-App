@@ -431,68 +431,85 @@ with main_tabs[1]:
             
                 selected_dates = sorted(list(set(range_returns.index[idx].tolist() + [returns_to_use.index[-1]])))
                 dates_end = selected_dates
-            
+                
                 if len(dates_end) < 2:
                     st.warning("⚠️ Not enough anchor dates for rolling optimization.")
-                results_dict = {}
-                overlay_dict={}
-                
-                
+
                 strategy_limits = overlay_dataframe.set_index("Strategy")["Limit"].to_dict()
-                for i in range(len(dates_end) - 1):
-                    dataset = range_returns.loc[dates_end[i]:dates_end[i+1]]
-                    risk = RiskAnalysis(dataset)
-                    date = dataset.index[-1]
-            
-                    optimal = risk.optimize(
-                        objective=dico_strategies[selected_strategy],
-                        constraints=constraints
-                    )
-                    
-                    for strat_name, limit in strategy_limits.items():
-                        if pd.isna(strat_name):
-                            continue
-                    
-                        if strat_name not in dico_strategies:
-                            continue
-                    
-                        overlay_dict.setdefault(strat_name, {})
-                    
-                        overlay_weights = risk.optimize(
-                            objective=dico_strategies[strat_name],
-                            constraints=constraints  # you can inject limit here
-                        )
-                    
-                        overlay_dict[strat_name][date] = np.round(overlay_weights, 6)
-                        
-                    results_dict[date] = np.round(optimal, 6)
+
+                strategy_key = dico_strategies[selected_strategy]
+                tasks = [(returns_to_use.loc[dates_end[i]:dates_end[i+1]],dates_end[i], dates_end[i+1],strategy_key) for i in range(len(dates_end)-1)]
                 
+                overlays_tasks = [
+                    (
+                        returns_to_use.loc[dates_end[i]:dates_end[i+1]],
+                        dates_end[i],
+                        dates_end[i+1],
+                        dico_strategies[key]
+                    )
+                    for i in range(len(dates_end)-1)
+                    for key in strategy_limits if pd.notna(key) and key in dico_strategies
+                ]
+                
+                all_tasks = tasks + overlays_tasks
+                
+                results = {}
+                
+                def worker(subset,start, end,strategy_key):
+                    if subset.empty or len(subset) < 2:
+                        return None
+                    try:
+                        risk = RiskAnalysis(subset)
+                        if constraints:
+                            opt = risk.optimize(objective=strategy_key, constraints=constraints)
+                        else:
+                            opt = risk.optimize(objective=strategy_key)
+                        return subset.index[-1], np.round(opt, 6),strategy_key
+                    except Exception:
+                        return None
 
-                rolling_optimization = pd.DataFrame(results_dict, index=dataframe.columns).T
-
-                core_strat=rolling_optimization.copy()
+                with ThreadPoolExecutor(max_workers=8) as executor:
+                    futures = {
+                        executor.submit(worker, subset, start, end, strat): (subset, start, end, strat)
+                        for subset, start, end, strat in all_tasks
+                    }
+                
+                    for future in as_completed(futures):
+                        out = future.result()
+                        if out is not None:
+                            date_key, weights, strategy_selected = out
+                
+                            if strategy_selected not in results:
+                                results[strategy_selected] = {}
+                
+                            results[strategy_selected][date_key] = weights
+                
+                
+                rolling_optimization=pd.DataFrame(results[strategy_key], index=dataframe.columns).T.sort_index()
+                total_overlay = pd.DataFrame(0, index=rolling_optimization.index, columns=rolling_optimization.columns)
                 core_weights = 1
-                total_overlay = pd.DataFrame(0, index=core_strat.index, columns=core_strat.columns)
-
+                core_strat = rolling_optimization.copy()
+                                    
                 for strat_name, limit in strategy_limits.items():
+                
                     if strat_name not in dico_strategies:
                         continue
                 
-                    strat_key = dico_strategies[strat_name]
+                    strat_key_overlay = dico_strategies[strat_name]
+                
+                    if strat_key_overlay not in results:
+                        continue  # skip if failed
                 
                     overlay_df = (
-                        pd.DataFrame(overlay_dict[strat_name], index=dataframe.columns)
-                        .T
-                        .sort_index()
+                        pd.DataFrame(results[strat_key_overlay], index=dataframe.columns).T.sort_index()
                         * limit
                     )
                 
                     total_overlay = total_overlay.add(overlay_df, fill_value=0)
+                    core_weights=core_weights-limit
                 
-                    # Update remaining core weight
-                    core_weights -= limit
-
-                rolling_optimization = rolling_optimization * core_weights + total_overlay
+                rolling_optimization = core_strat * core_weights + total_overlay
+                             
                 if not rolling_optimization.empty:
                     first_row = pd.Series(1 / len(dataframe.columns), index=dataframe.columns, name=dates_end[0])
                     rolling_optimization = pd.concat([pd.DataFrame([first_row]), rolling_optimization])
@@ -620,7 +637,6 @@ with main_tabs[1]:
                     st.subheader("Overlay Matrix")
                     st.dataframe(res["total_overlay"],width='stretch')
 
-                st.dataframe(res["rolling_optimization"],width='stretch')
                 st.subheader("Allocation Table")
                 st.dataframe(res["alloc_df"],width='stretch')
                 
