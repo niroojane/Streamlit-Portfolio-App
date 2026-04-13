@@ -2,7 +2,8 @@
 
 * https://cryptoptimization.streamlit.app
 * https://optimisationapp.streamlit.app
-
+* https://portfolioconstruction.streamlit.app
+  
 # 📊 Portfolio Optimization Tools
 
 An interactive **Streamlit-based portfolio optimization and risk analysis tool** designed for financial analysis, asset allocation, and portfolio construction.
@@ -87,9 +88,9 @@ Compare:
 
 ---
 
-## 📂 Input Data Format for the first app
+## 📂 Input Data Format for the first and second app
 https://optimisationapp.streamlit.app
-
+https://portfolioconstruction.streamlit.app
 
 Upload an Excel file (`.xlsx`) with:
 
@@ -130,6 +131,7 @@ pip install -r requirements.txt
 ```bash
 streamlit run Portfolio_App.py
 streamlit run Minimum Variance App.py
+streamlit run Streamlit_App.py
 ```
 
 ---
@@ -163,8 +165,9 @@ Custom modules:
 ```
 .
 
-├── Portfolio_App.py            #  Streamlit application with manual input
+├── Portfolio_App.py            #  Light Streamlit application with manual input
 ├── Minimum_Variance_App.py     #  Streamlit application for crypto market
+├── Streamlit_App.py            #  Heavy Streamlit application with manual input
 ├──src/
    ├── RiskMetrics.py           # Portfolio & risk calculations
    ├── Rebalancing.py           # Rebalancing logic
