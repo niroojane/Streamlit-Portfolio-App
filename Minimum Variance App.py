@@ -1424,11 +1424,13 @@ with main_tabs[3]:
             
             historical_PCA=pd.DataFrame(np.array(list(pca_weight.values())).dot(np.transpose(portfolio.returns)),index=portfolio.returns.index,columns=['PCA'])
             historical_PCA=historical_PCA.dropna()
-        
+            historical_PCA.iloc[0]=0
+            
             comparison=portfolio.returns.copy()
             comparison['PCA']=historical_PCA
+            comparison.iloc[0]=0
             distances=np.sqrt(np.sum(comparison.apply(lambda y:(y-historical_PCA['PCA'])**2),axis=0)).sort_values()
-            pca_similarity=(1+comparison[distances.index[:num_closest_to_pca]]).cumprod()
+            pca_similarity=(1+comparison[distances.index[:num_closest_to_pca]]).cumprod()*100
     
     
             fig=px.bar(variance_explained_dataframe,title='Variance Explanation in %')
@@ -1439,7 +1441,7 @@ with main_tabs[3]:
             fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400) 
             fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
-            fig3=px.line((1+historical_PCA).cumprod(),title='Eigen Index', render_mode = 'svg')
+            fig3=px.line((1+historical_PCA).cumprod()*100,title='Eigen Index', render_mode = 'svg')
             fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400)
             fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
     
