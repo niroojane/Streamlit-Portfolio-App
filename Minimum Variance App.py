@@ -374,7 +374,7 @@ with main_tabs[1]:
             st.subheader("Core Strategy")
 
             selected_strategy = st.selectbox("Strategy:", options_strat, index=0)
-            benchmark_tracking_error = st.selectbox("Benchmark:", list(allocation_dataframe.index), index=0)
+            benchmark_tracking_error = st.selectbox("Benchmark:", list(st.session_state.allocation_dataframe.index), index=0)
             selected_frequency = st.selectbox("Rebalancing Frequency:", rebalancing_frequency, index=0)
             window_vol = st.number_input("Sliding Window Size:", min_value=1, value=252, step=1)
                         
