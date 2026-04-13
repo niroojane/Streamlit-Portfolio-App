@@ -129,7 +129,6 @@ if uploaded_file:
         fig = px.line(dataframe.loc[mask], title='Price', width=800, height=400, render_mode = 'svg')
         fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
         fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
-        fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
         
         cumulative_returns=returns_to_use.loc[mask].copy()
         cumulative_returns.iloc[0]=0
@@ -138,7 +137,7 @@ if uploaded_file:
         fig2 = px.line(cumulative_returns, title='Cumulative Performance', width=800, height=400, render_mode = 'svg')
         fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
         fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
-        fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
+        
         col1, col2 = st.columns([1, 1])
         with col1:
             st.plotly_chart(fig,width='content')
@@ -447,8 +446,6 @@ if uploaded_file:
                                                      'Core':(quantities_core * dataframe).sum(axis=1),
                                                      'Overlay':(quantities_overlay * dataframe).sum(axis=1)})
                     
-                    if '^GSPC' in range_prices.columns:
-                        performance_fund['S&P'] = range_prices['^GSPC']
                     
                     performance_pct = performance_fund.pct_change(fill_method=None)
                     
@@ -464,15 +461,13 @@ if uploaded_file:
                     metrics['Sharpe Ratio']=((1+metrics['Returns'])**(1/len(set(returns_to_use.index.year)))/metrics['Volatility']).round(4)
                     metrics['Drawdown']=(max_drawdown).round(4)
                     metrics['Date Drawdown']=date_drawdown
-                    excess_returns_to_btc = performance_pct.loc[:, performance_pct.columns != 'S&P'].sub(
-                        performance_pct['S&P'], axis=0
-                    )
-                    metrics['Tracking Error to S&P']=((excess_returns_to_btc).std()*np.sqrt(252)).round(4)
                     
                     excess_returns_to_core = performance_pct.loc[:, performance_pct.columns != 'Core'].sub(
                         performance_pct['Core'], axis=0
                     )
+                    
                     metrics['Tracking Error to Core']=((excess_returns_to_core).std()*np.sqrt(252)).round(4)
+                    
                     metrics=metrics.fillna(0).T
                     indicators=metrics
     
@@ -519,18 +514,18 @@ if uploaded_file:
             
                     fig = px.line(cumulative_results, title='Performance', width=800, height=400, render_mode = 'svg')
                     fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
-                    fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                    fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund"])
                     fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
                 
                     fig2 = px.line(drawdown, title='Drawdown', width=800, height=400, render_mode = 'svg')
                     fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
-                    fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                    fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund"])
                     fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
                 
-                    fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                    fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund"])
                     fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
-                    fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
+                    fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund"])
                     fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
                 
                     fig4.update_layout(width=800, height=400,title={'text': "Efficient Frontier"})
