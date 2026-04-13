@@ -129,7 +129,7 @@ pip install -r requirements.txt
 
 ```bash
 streamlit run Portfolio_App.py
-streamlit run Minimum
+streamlit run Minimum Variance App.py
 ```
 
 ---
