@@ -4,6 +4,7 @@ import random
 import numpy as np
 import datetime
 from concurrent.futures import ThreadPoolExecutor,as_completed
+from multiprocessing import Pool, cpu_count
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -148,10 +149,12 @@ if uploaded_file:
     with main_tabs[1]:
     
         dico_strategies = {
-        'Minimum Variance': 'minimum_variance',
-        'Risk Parity': 'risk_parity',
-        'Sharpe Ratio': 'sharpe_ratio',
-        'Maximum Diversification':'maximum_diversification'}
+            'Minimum Variance': 'minimum_variance',
+            'Risk Parity': 'risk_parity',
+            'Sharpe Ratio': 'sharpe_ratio',
+            'Maximum Diversification':'maximum_diversification',
+            'Eigen Strategy':'eigenportfolio'}
+    
         
         if "dataframe" not in st.session_state:
             st.info("Load data first ⬅️")
@@ -249,11 +252,14 @@ if uploaded_file:
                 minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
                 risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
                 max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
-                
+                eigen_portfolio__constraint=portfolio.optimize("eigenportfolio",constraints=constraints)
+        
                 optimized_weights = portfolio.optimize(objective="sharpe_ratio")
                 minvar_weights = portfolio.optimize(objective="minimum_variance")
                 risk_parity_weights = portfolio.optimize(objective="risk_parity")
                 max_diversification=portfolio.optimize(objective="maximum_diversification")
+                eigen_portfolio=portfolio.optimize("eigenportfolio")
+        
                 equal_weights = np.ones(returns_to_use.shape[1]) / returns_to_use.shape[1]
         
                 allocation['Optimal Portfolio']=optimized_weights.tolist()
@@ -267,8 +273,11 @@ if uploaded_file:
                 
                 allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
                 allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-                allocation['Equal Weighted']=equal_weights.tolist()
                 
+                allocation['Eigen Portfolio']= eigen_portfolio.tolist()
+                allocation['Eigen Portfolio Constrained']= eigen_portfolio__constraint.tolist()
+                
+                allocation['Equal Weighted']=equal_weights.tolist()                   
                 allocation_dataframe = pd.DataFrame(
                         allocation,
                         index=dataframe.columns
@@ -379,7 +388,7 @@ if uploaded_file:
                         except Exception:
                             return None
     
-                    with ThreadPoolExecutor(max_workers=8) as executor:
+                    with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                         futures = {
                             executor.submit(worker, subset, start, end, strat): (subset, start, end, strat)
                             for subset, start, end, strat in all_tasks
@@ -807,7 +816,7 @@ if uploaded_file:
         
                             results_dict = {}
                             
-                            with ThreadPoolExecutor(max_workers=8) as executor:
+                            with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                                 futures = {
                                     executor.submit(get_ex_ante_vol, weights, returns, window): name
                                     for name, weights, returns, window in tasks
@@ -957,7 +966,7 @@ if uploaded_file:
         
                             results_dict = {}
                             
-                            with ThreadPoolExecutor(max_workers=8) as executor:
+                            with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                                 futures = {
                                     executor.submit(get_ex_ante_vol, weights, returns, window): name
                                     for name, weights, returns, window in tasks
@@ -1227,7 +1236,7 @@ if uploaded_file:
                         cvar_scenarios = {}
                         fund_results = {}
                         
-                        with ThreadPoolExecutor(max_workers=8) as executor:
+                        with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                             futures = {
                                 executor.submit(process_index, *task): task[0]
                                 for task in tasks
@@ -1492,7 +1501,7 @@ if uploaded_file:
                             except Exception:
                                 return None
                 
-                        with ThreadPoolExecutor(max_workers=8) as executor:
+                        with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                             futures = {executor.submit(worker,subset, start, end): (subset,start, end) for subset,start, end in tasks}
                             for future in as_completed(futures):
                                 out = future.result()

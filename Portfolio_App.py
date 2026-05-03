@@ -153,21 +153,24 @@ if uploaded_file:
         except Exception as e:
             pass
 
+        st.subheader("Optimized Weights")
+
+        allocation={}
+        
         optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
         minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
         risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
         max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
-        equal_weights = np.ones(returns.shape[1]) / returns.shape[1]
-
-        st.subheader("Optimized Weights")
-
-        allocation={}
+        eigen_portfolio__constraint=portfolio.optimize("eigenportfolio",constraints=constraints)
 
         optimized_weights = portfolio.optimize(objective="sharpe_ratio")
         minvar_weights = portfolio.optimize(objective="minimum_variance")
         risk_parity_weights = portfolio.optimize(objective="risk_parity")
         max_diversification=portfolio.optimize(objective="maximum_diversification")
-        
+        eigen_portfolio=portfolio.optimize("eigenportfolio")
+
+        equal_weights = np.ones(returns_to_use.shape[1]) / returns_to_use.shape[1]
+
         allocation['Optimal Portfolio']=optimized_weights.tolist()
         allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
 
@@ -179,8 +182,11 @@ if uploaded_file:
         
         allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
         allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-        allocation['Equal Weighted']=equal_weights.tolist()
-
+        
+        allocation['Eigen Portfolio']= eigen_portfolio.tolist()
+        allocation['Eigen Portfolio Constrained']= eigen_portfolio__constraint.tolist()
+        
+        allocation['Equal Weighted']=equal_weights.tolist()    
         allocation_dataframe=pd.DataFrame(allocation,index=returns.columns).T.round(6)
         
         

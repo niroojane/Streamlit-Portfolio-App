@@ -4,6 +4,7 @@ import random
 import numpy as np
 import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from multiprocessing import Pool, cpu_count
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -60,7 +61,7 @@ def load_data(tickers,start_date=datetime.datetime(2023,1,1),today=None):
     scope_prices = None
 
     try:
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
             futures = [executor.submit(get_price, tickers,d) for d in end_dates]
 
             for future in as_completed(futures):
@@ -237,10 +238,12 @@ with main_tabs[0]:
 with main_tabs[1]:
 
     dico_strategies = {
-    'Minimum Variance': 'minimum_variance',
-    'Risk Parity': 'risk_parity',
-    'Sharpe Ratio': 'sharpe_ratio',
-    'Maximum Diversification':'maximum_diversification'}
+        'Minimum Variance': 'minimum_variance',
+        'Risk Parity': 'risk_parity',
+        'Sharpe Ratio': 'sharpe_ratio',
+        'Maximum Diversification':'maximum_diversification',
+        'Eigen Strategy':'eigenportfolio'}
+    
     
     if "dataframe" not in st.session_state:
         st.info("Load data first ⬅️")
@@ -338,11 +341,14 @@ with main_tabs[1]:
             minvar_weights_constraint = portfolio.optimize(objective="minimum_variance",constraints=constraints)
             risk_parity_weights_constraint = portfolio.optimize(objective="risk_parity",constraints=constraints)
             max_diversification_weights_constraint=portfolio.optimize("maximum_diversification",constraints=constraints)
-            
+            eigen_portfolio__constraint=portfolio.optimize("eigenportfolio",constraints=constraints)
+
             optimized_weights = portfolio.optimize(objective="sharpe_ratio")
             minvar_weights = portfolio.optimize(objective="minimum_variance")
             risk_parity_weights = portfolio.optimize(objective="risk_parity")
             max_diversification=portfolio.optimize(objective="maximum_diversification")
+            eigen_portfolio=portfolio.optimize("eigenportfolio")
+
             equal_weights = np.ones(returns_to_use.shape[1]) / returns_to_use.shape[1]
     
             allocation['Optimal Portfolio']=optimized_weights.tolist()
@@ -356,12 +362,17 @@ with main_tabs[1]:
             
             allocation['Risk Parity Portfolio']=risk_parity_weights.tolist()
             allocation['Risk Parity Constrained Portfolio']=risk_parity_weights_constraint.tolist()
-            allocation['Equal Weighted']=equal_weights.tolist()
+            
+            allocation['Eigen Portfolio']= eigen_portfolio.tolist()
+            allocation['Eigen Portfolio Constrained']= eigen_portfolio__constraint.tolist()
+            
+            allocation['Equal Weighted']=equal_weights.tolist()    
             
             allocation_dataframe = pd.DataFrame(
                     allocation,
                     index=dataframe.columns
                 ).T.round(6)
+            
             
             st.session_state.allocation_dataframe = st.data_editor(
                 allocation_dataframe,
@@ -468,7 +479,7 @@ with main_tabs[1]:
                     except Exception:
                         return None
 
-                with ThreadPoolExecutor(max_workers=8) as executor:
+                with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                     futures = {
                         executor.submit(worker, subset, start, end, strat): (subset, start, end, strat)
                         for subset, start, end, strat in all_tasks
@@ -899,7 +910,7 @@ with main_tabs[2]:
     
                         results_dict = {}
                         
-                        with ThreadPoolExecutor(max_workers=8) as executor:
+                        with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                             futures = {
                                 executor.submit(get_ex_ante_vol, weights, returns, window): name
                                 for name, weights, returns, window in tasks
@@ -1049,7 +1060,7 @@ with main_tabs[2]:
     
                         results_dict = {}
                         
-                        with ThreadPoolExecutor(max_workers=8) as executor:
+                        with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                             futures = {
                                 executor.submit(get_ex_ante_vol, weights, returns, window): name
                                 for name, weights, returns, window in tasks
@@ -1319,7 +1330,7 @@ with main_tabs[2]:
                     cvar_scenarios = {}
                     fund_results = {}
                     
-                    with ThreadPoolExecutor(max_workers=8) as executor:
+                    with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                         futures = {
                             executor.submit(process_index, *task): task[0]
                             for task in tasks
@@ -1583,7 +1594,7 @@ with main_tabs[3]:
                         except Exception:
                             return None
             
-                    with ThreadPoolExecutor(max_workers=8) as executor:
+                    with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
                         futures = {executor.submit(worker,subset, start, end): (subset,start, end) for subset,start, end in tasks}
                         for future in as_completed(futures):
                             out = future.result()
