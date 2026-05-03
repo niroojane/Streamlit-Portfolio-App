@@ -119,6 +119,8 @@ def first_pca_over_time(returns,window=252):
     results=pd.DataFrame(dico.values(),index=dico.keys())
 
     return results
+
+    
 def halton_sequences(number,base=2):
     
     #Generate Halton sequences
@@ -427,9 +429,14 @@ class Portfolio:
             dr = (weights @ asset_vol) / port_vol
             return -dr
             
-        
+        def rayleigh_quotient(weights):
+            cov = self.returns.cov().values * 252
+            R = np.dot(weights.T, np.dot(cov, weights)) / np.dot(weights.T, weights)
+            return -R
+            
         n_assets = len(self.returns.columns)
         weight = np.array([1 / n_assets] * n_assets)
+        
         bounds = tuple((0, 1) for _ in range(n_assets))
         
         if not constraints:
@@ -454,6 +461,11 @@ class Portfolio:
         elif objective=='maximum_diversification':
             
             optimum_weights = sco.minimize(diversification_ratio, weight, method='SLSQP', bounds=bounds, constraints=constraints)
+            
+        elif objective=='eigenportfolio':
+
+            optimum_weights = sco.minimize(rayleigh_quotient, weight, method='SLSQP', bounds=bounds, constraints=constraints)
+            
         else:
             
             print("Objective function undefined")
