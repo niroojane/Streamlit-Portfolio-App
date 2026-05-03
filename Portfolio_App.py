@@ -169,7 +169,7 @@ if uploaded_file:
         max_diversification=portfolio.optimize(objective="maximum_diversification")
         eigen_portfolio=portfolio.optimize("eigenportfolio")
 
-        equal_weights = np.ones(returns_to_use.shape[1]) / returns_to_use.shape[1]
+        equal_weights = np.ones(returns.shape[1]) / returns.shape[1]
 
         allocation['Optimal Portfolio']=optimized_weights.tolist()
         allocation['Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
