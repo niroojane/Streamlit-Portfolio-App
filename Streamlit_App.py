@@ -816,15 +816,8 @@ if uploaded_file:
         
                             results_dict = {}
                             
-                            with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
-                                futures = {
-                                    executor.submit(get_ex_ante_vol, weights, returns, window): name
-                                    for name, weights, returns, window in tasks
-                                }
-                            
-                                for future in as_completed(futures):
-                                    name = futures[future]
-                                    results_dict[name] = future.result()
+                            for name,weight,returns,window in tasks:
+                                results_dict[name]=get_ex_ante_vol(weight, returns, window_risk)
                     
                             results_vol=pd.concat(results_dict.values(), axis=1)
                             results_vol.columns=results_dict.keys()
@@ -966,16 +959,10 @@ if uploaded_file:
         
                             results_dict = {}
                             
-                            with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
-                                futures = {
-                                    executor.submit(get_ex_ante_vol, weights, returns, window): name
-                                    for name, weights, returns, window in tasks
-                                }
-                            
-                                for future in as_completed(futures):
-                                    name = futures[future]
-                                    results_dict[name] = future.result()
-                    
+                            for name,weight,returns,window in tasks:
+                
+                                results_dict[name]=get_ex_ante_vol(weight, returns, window_te)
+                                                
                             results_tracking_error=pd.concat(results_dict.values(), axis=1)
                             results_tracking_error.columns=results_dict.keys()
                             
@@ -1029,259 +1016,447 @@ if uploaded_file:
         
                 
             with sub_tabs_risk[1]:
+                var_decomposition_tab=st.tabs(['Value at Risk','Value at Risk Trajectory'])
+                
+                with var_decomposition_tab[0]:
+                
+                    dataframe = st.session_state.dataframe
+                    returns_to_use = st.session_state.returns_to_use
+                    res=st.session_state.results
+                    allocation_dataframe=res["alloc_df"]
+                        
+                    max_value = dataframe.index.max().strftime('%Y-%m-%d')
+                    min_value = dataframe.index.min().strftime('%Y-%m-%d')
+                    max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+                    min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
+                    value=(min_value,max_value)
             
-                dataframe = st.session_state.dataframe
-                returns_to_use = st.session_state.returns_to_use
-                res=st.session_state.results
-                allocation_dataframe=res["alloc_df"]
+                    Model4 = st.slider(
+                    'Date:',
+                    min_value=min_value,
+                    max_value=max_value,
+                    value=value,key='var_tab')
+                
+                    selmin, selmax = Model3
+                    selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+                    selmaxd = selmax.strftime('%Y-%m-%d')
                     
-                max_value = dataframe.index.max().strftime('%Y-%m-%d')
-                min_value = dataframe.index.min().strftime('%Y-%m-%d')
-                max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
-                min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
-                value=(min_value,max_value)
-        
-                Model4 = st.slider(
-                'Date:',
-                min_value=min_value,
-                max_value=max_value,
-                value=value,key='var_tab')
+                    mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+                    
+                    range_prices=dataframe.loc[mask].copy()
+                    range_returns=returns_to_use.loc[mask].copy()
+                    
+                    stress_factor=st.number_input("Stress Factor:", min_value=1.0, value=1.0, step=0.1)
+                    mean_factor=st.number_input("Mean Shock Factor:", min_value=0.0, value=1.0, step=0.1)
+                    iterations=st.number_input("Iterations:", min_value=1, value=10000, step=1)
+                    num_scenarios=st.number_input("Scenarios:", min_value=1, value=100, step=1)
+                    var_centile=st.number_input("Centile:", min_value=0.00, value=0.05, step=0.01)
             
-                selmin, selmax = Model3
-                selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
-                selmaxd = selmax.strftime('%Y-%m-%d')
-                
-                mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
-                
-                range_prices=dataframe.loc[mask].copy()
-                range_returns=returns_to_use.loc[mask].copy()
-                
-                stress_factor=st.number_input("Stress Factor:", min_value=1.0, value=1.0, step=0.1)
-                mean_factor=st.number_input("Mean Shock Factor:", min_value=0.0, value=1.0, step=0.1)
-                iterations=st.number_input("Iterations:", min_value=1, value=10000, step=1)
-                num_scenarios=st.number_input("Scenarios:", min_value=1, value=100, step=1)
-                var_centile=st.number_input("Centile:", min_value=0.00, value=0.05, step=0.01)
+                    stress_vec=np.linspace(stress_factor,stress_factor,returns_to_use.shape[1])
+                    stress_matrix = np.diag(stress_vec)
+                    
+                    stress_mean=np.linspace(mean_factor,mean_factor,returns_to_use.shape[1])
+                    
+                    selected_fund_var=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='selected_fund_var')
         
-                stress_vec=np.linspace(stress_factor,stress_factor,returns_to_use.shape[1])
-                stress_matrix = np.diag(stress_vec)
-                
-                stress_mean=np.linspace(mean_factor,mean_factor,returns_to_use.shape[1])
-                
-                selected_fund_var=st.selectbox("Fund:", list(allocation_dataframe.index),index=0,key='selected_fund_var')
-    
-                st.session_state.mean_data=pd.DataFrame(
-                    stress_mean,
-                    columns=['Mean Shock'],
-                    index=dataframe.columns)
-    
-                st.session_state.corr_data=pd.DataFrame(
-                    stress_matrix,
-                    columns=dataframe.columns,
-                    index=dataframe.columns
-                )
-                    
-                st.subheader("Mean Return Shock")
-                
-                def sync_mean_data():
-                    edited = st.session_state.editable_mean_data
-                    df = st.session_state.mean_data
-                    for row_idx, col_changes in edited["edited_rows"].items():
-                        for col_name, new_val in col_changes.items():
-                            df.iloc[row_idx][col_name] = new_val
-                            
-                    st.session_state.mean_data = df     
-                    
-                editable_mean_data = st.data_editor(
-                    st.session_state.mean_data,
-                    num_rows="static",
-                    key='editable_mean_data',
-                    on_change=sync_mean_data
-                )
-                
-                st.subheader("Correlation and Volatility Shock")
-                
-                def enforce_symmetry():
-                    """Force correlation matrix to be symmetric using the widget's edited value"""
-                    edited = st.session_state.corr_editor_widget
-                    df = st.session_state.corr_data.copy()
-        
-                    for row_idx, col_changes in edited["edited_rows"].items():
-                        for col_name, new_val in col_changes.items():
-                            df.iloc[row_idx][col_name] = new_val
-                            
-                    sym = set_symmetric(df.to_numpy(), limit=2)
-                    
-                    st.session_state.corr_data = pd.DataFrame(
-                        sym, index=df.index, columns=df.columns
-                    )
-                    
-    
-                    
-                edited_corr = st.data_editor(
-                    st.session_state.corr_data,
-                    key="corr_editor_widget",
-                    num_rows="static",
-                    on_change=enforce_symmetry
-                )
-    
-    
-                cov=range_returns.cov()
-                stress_diag=np.diag(np.diag(st.session_state.corr_data))
-                stressed_cov = stress_diag @ cov @ stress_diag
-                stressed_std=np.sqrt(np.diag(stressed_cov))
-                vol = stressed_std*np.sqrt(250)
-                shocked_means=(range_returns.mean()*editable_mean_data['Mean Shock'])*250
-                
-                corr_matrix = stressed_cov / np.outer(stressed_std, stressed_std)
-                corr_matrix=corr_matrix+np.tril(edited_corr)+np.tril(edited_corr).T
-                corr_matrix=np.clip(corr_matrix,-1,1)
-                corr_matrix=cov_nearest(corr_matrix)
-                
-                corr_dataframe=pd.DataFrame(corr_matrix,index=range_returns.columns,columns=range_returns.columns)
-                mean_shocked_dataframe=pd.concat([range_returns.mean()*250,shocked_means],axis=1)
-                mean_shocked_dataframe.columns=['Means','Shocked Means']
-        
-                original_vol=range_returns.std()*np.sqrt(250)
-                vol_dataframe=pd.DataFrame(index=range_returns.columns)
-                
-                vol_dataframe['Vol']=original_vol
-                vol_dataframe['Shocked Vol']=vol
-        
-                original_corr=range_returns.corr()
-                expected_data=pd.concat([mean_shocked_dataframe,vol_dataframe],axis=1)  
-    
-                col1,col2=st.columns([1,1])
-                
-                st.subheader("Shocked Correlation")
-    
-                with col1:
-                    
-                    fig = px.imshow(original_corr.round(4), title='Original Correlation Matrix',color_continuous_scale='blues', text_auto=True, aspect="auto")
-                    fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
-                    fig.update_traces(xgap=2, ygap=2)
-                    fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
-    
-                    st.plotly_chart(fig)
-                    # st.dataframe(original_corr)
-                with col2:
-                    # st.subheader("Shocked Correlation Matrix")
-                    fig1 = px.imshow(corr_dataframe.round(4), title='Shocked Correlation Matrix',color_continuous_scale='blues', text_auto=True, aspect="auto")
-                    fig1.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
-                    fig1.update_traces(xgap=2, ygap=2)
-                    fig1.update_traces(textfont=dict(family="Arial Narrow", size=15))
-    
-                    st.plotly_chart(fig1)
-                    # st.dataframe(corr_dataframe)
-                
-                st.subheader("Shocked Means and Volatilities ")
-                st.dataframe(expected_data)
-                
-                col1, col2,_ = st.columns([1,1,8])
-                with col1:
-                    var_button = st.button("Run Simulation")
-                with col2:
-                    refresh_assumption = st.button("Reset Shocks")
-                            
-                var_status = st.empty()
-                  
-                var_scenarios, cvar_scenarios, fund_results = {}, {}, {}
-    
-    
-                if refresh_assumption:
-                    
-                    new_mean_df = pd.DataFrame(
-                        np.full(returns_to_use.shape[1], mean_factor),
+                    st.session_state.mean_data=pd.DataFrame(
+                        stress_mean,
                         columns=['Mean Shock'],
-                        index=dataframe.columns
-                    )
-                
-                    new_corr_df = pd.DataFrame(
-                        np.diag(np.full(returns_to_use.shape[1], stress_factor)),
+                        index=dataframe.columns)
+        
+                    st.session_state.corr_data=pd.DataFrame(
+                        stress_matrix,
                         columns=dataframe.columns,
                         index=dataframe.columns
                     )
-                
-                    # Reset BOTH the source data AND the widget state
-                    st.session_state.mean_data = new_mean_df
-                    st.session_state.corr_data = new_corr_df
-    
-                    st.rerun()
+                        
+                    st.subheader("Mean Return Shock")
                     
-                if "fund_results" not in st.session_state:
-                    st.session_state.fund_results = None
-                    st.session_state.var_scenarios=None
-                    st.session_state.cvar_scenarios=None
-                
-                if var_button:
-                    with st.spinner("Computing VaR...",show_time=True):
-                        st.session_state.fund_results=None
+                    def sync_mean_data():
+                        edited = st.session_state.editable_mean_data
+                        df = st.session_state.mean_data
+                        for row_idx, col_changes in edited["edited_rows"].items():
+                            for col_name, new_val in col_changes.items():
+                                df.iloc[row_idx][col_name] = new_val
+                                
+                        st.session_state.mean_data = df     
+                        
+                    editable_mean_data = st.data_editor(
+                        st.session_state.mean_data,
+                        num_rows="static",
+                        key='editable_mean_data',
+                        on_change=sync_mean_data
+                    )
+                    
+                    st.subheader("Correlation and Volatility Shock")
+                    
+                    def enforce_symmetry():
+                        """Force correlation matrix to be symmetric using the widget's edited value"""
+                        edited = st.session_state.corr_editor_widget
+                        df = st.session_state.corr_data.copy()
+            
+                        for row_idx, col_changes in edited["edited_rows"].items():
+                            for col_name, new_val in col_changes.items():
+                                df.iloc[row_idx][col_name] = new_val
+                                
+                        sym = set_symmetric(df.to_numpy(), limit=2)
+                        
+                        st.session_state.corr_data = pd.DataFrame(
+                            sym, index=df.index, columns=df.columns
+                        )
+                        
+        
+                        
+                    edited_corr = st.data_editor(
+                        st.session_state.corr_data,
+                        key="corr_editor_widget",
+                        num_rows="static",
+                        on_change=enforce_symmetry
+                    )
+        
+        
+                    cov=range_returns.cov()
+                    stress_diag=np.diag(np.diag(st.session_state.corr_data))
+                    stressed_cov = stress_diag @ cov @ stress_diag
+                    stressed_std=np.sqrt(np.diag(stressed_cov))
+                    vol = stressed_std*np.sqrt(250)
+                    shocked_means=(range_returns.mean()*editable_mean_data['Mean Shock'])*250
+                    
+                    corr_matrix = stressed_cov / np.outer(stressed_std, stressed_std)
+                    corr_matrix=corr_matrix+np.tril(edited_corr)+np.tril(edited_corr).T
+                    corr_matrix=np.clip(corr_matrix,-1,1)
+                    corr_matrix=cov_nearest(corr_matrix)
+                    
+                    corr_dataframe=pd.DataFrame(corr_matrix,index=range_returns.columns,columns=range_returns.columns)
+                    mean_shocked_dataframe=pd.concat([range_returns.mean()*250,shocked_means],axis=1)
+                    mean_shocked_dataframe.columns=['Means','Shocked Means']
+            
+                    original_vol=range_returns.std()*np.sqrt(250)
+                    vol_dataframe=pd.DataFrame(index=range_returns.columns)
+                    
+                    vol_dataframe['Vol']=original_vol
+                    vol_dataframe['Shocked Vol']=vol
+            
+                    original_corr=range_returns.corr()
+                    expected_data=pd.concat([mean_shocked_dataframe,vol_dataframe],axis=1)  
+        
+                    col1,col2=st.columns([1,1])
+                    
+                    st.subheader("Shocked Correlation")
+        
+                    with col1:
+                        
+                        fig = px.imshow(original_corr.round(4), title='Original Correlation Matrix',color_continuous_scale='blues', text_auto=True, aspect="auto")
+                        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
+                        fig.update_traces(xgap=2, ygap=2)
+                        fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        
+                        st.plotly_chart(fig)
+                        # st.dataframe(original_corr)
+                    with col2:
+                        # st.subheader("Shocked Correlation Matrix")
+                        fig1 = px.imshow(corr_dataframe.round(4), title='Shocked Correlation Matrix',color_continuous_scale='blues', text_auto=True, aspect="auto")
+                        fig1.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
+                        fig1.update_traces(xgap=2, ygap=2)
+                        fig1.update_traces(textfont=dict(family="Arial Narrow", size=15))
+        
+                        st.plotly_chart(fig1)
+                        # st.dataframe(corr_dataframe)
+                    
+                    st.subheader("Shocked Means and Volatilities ")
+                    st.dataframe(expected_data)
+                    
+                    col1, col2,_ = st.columns([1,1,8])
+                    with col1:
+                        var_button = st.button("Run Simulation")
+                    with col2:
+                        refresh_assumption = st.button("Reset Shocks")
+                                
+                    var_status = st.empty()
+                      
+                    var_scenarios, cvar_scenarios, fund_results = {}, {}, {}
+        
+        
+                    if refresh_assumption:
+                        
+                        new_mean_df = pd.DataFrame(
+                            np.full(returns_to_use.shape[1], mean_factor),
+                            columns=['Mean Shock'],
+                            index=dataframe.columns
+                        )
+                    
+                        new_corr_df = pd.DataFrame(
+                            np.diag(np.full(returns_to_use.shape[1], stress_factor)),
+                            columns=dataframe.columns,
+                            index=dataframe.columns
+                        )
+                    
+                        # Reset BOTH the source data AND the widget state
+                        st.session_state.mean_data = new_mean_df
+                        st.session_state.corr_data = new_corr_df
+        
+                        st.rerun()
+                        
+                    if "fund_results" not in st.session_state:
+                        st.session_state.fund_results = None
                         st.session_state.var_scenarios=None
                         st.session_state.cvar_scenarios=None
-        
-                        tasks = [
-                            (
-                                idx,
-                                allocation_dataframe,
-                                range_prices,
-                                iterations,
-                                edited_corr.to_numpy(),
-                                editable_mean_data['Mean Shock'],
-                                var_centile,
-                                num_scenarios
-                            )
-                            for idx in allocation_dataframe.index
-                        ]
-                        
-                        var_scenarios = {}
-                        cvar_scenarios = {}
-                        fund_results = {}
-                        
-                        with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
-                            futures = {
-                                executor.submit(process_index, *task): task[0]
-                                for task in tasks
-                            }
-                        
-                            for future in futures:
-                                idx = futures[future]
-                                try:
-                                    var, cvar, result = future.result()
-                                    var_scenarios[idx] = var
-                                    cvar_scenarios[idx] = cvar
-                                    fund_results[idx] = result
-                                except Exception as e:
-                                    print(f"Error processing index {idx}: {e}")
+                    
+                    if var_button:
+                        with st.spinner("Computing VaR...",show_time=True):
+                            st.session_state.fund_results=None
+                            st.session_state.var_scenarios=None
+                            st.session_state.cvar_scenarios=None
+            
+                            tasks = [
+                                (
+                                    idx,
+                                    allocation_dataframe,
+                                    range_prices,
+                                    iterations,
+                                    edited_corr.to_numpy(),
+                                    editable_mean_data['Mean Shock'],
+                                    var_centile,
+                                    num_scenarios
+                                )
+                                for idx in allocation_dataframe.index
+                            ]
                             
-                            for future in as_completed(futures):
-                                idx, vs, cvs, fund_result = future.result()
-                                var_scenarios[idx] = vs
-                                cvar_scenarios[idx] = cvs
-                                fund_results[idx] = fund_result
+                            var_scenarios = {}
+                            cvar_scenarios = {}
+                            fund_results = {}
+                            
+                            with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
+                                futures = {
+                                    executor.submit(process_index, *task): task[0]
+                                    for task in tasks
+                                }
+                            
+                                for future in futures:
+                                    idx = futures[future]
+                                    try:
+                                        var, cvar, result = future.result()
+                                        var_scenarios[idx] = var
+                                        cvar_scenarios[idx] = cvar
+                                        fund_results[idx] = result
+                                    except Exception as e:
+                                        print(f"Error processing index {idx}: {e}")
+                                
+                                for future in as_completed(futures):
+                                    idx, vs, cvs, fund_result = future.result()
+                                    var_scenarios[idx] = vs
+                                    cvar_scenarios[idx] = cvs
+                                    fund_results[idx] = fund_result
+        
+                            st.session_state.var_scenarios = var_scenarios
+                            st.session_state.cvar_scenarios = cvar_scenarios
+                            st.session_state.fund_results = fund_results
+                            var_status.success('Done!')
+        
+                    if st.session_state.fund_results is not None:
+                        
+                        var_scenarios=st.session_state.var_scenarios
+                        cvar_scenarios=st.session_state.cvar_scenarios
+                        fund_results=st.session_state.fund_results   
+                        
+                        columns = ['Multivariate', 'Gaussian Copula', 'T-Student Copula', 'Gumbel Copula', 'Monte Carlo']
+                    
+                        var_dataframe = pd.DataFrame(var_scenarios[selected_fund_var])
+                        var_dataframe.columns = columns
+                    
+                        cvar_dataframe = pd.DataFrame(cvar_scenarios[selected_fund_var])
+                        cvar_dataframe.columns = columns
+                    
+                        fund_results_dataframe = pd.DataFrame(fund_results).T
+                        
+                        st.dataframe(var_dataframe,width='stretch')
+                        st.dataframe(cvar_dataframe,width='stretch')
+                        st.dataframe(fund_results_dataframe,width='stretch')
+                    
+                with var_decomposition_tab[1]:
+                    
+                    dataframe = st.session_state.dataframe
+                    returns_to_use = st.session_state.returns_to_use
+                    res=st.session_state.results
+                    allocation_dataframe=res["alloc_df"]
+                        
+                    max_value = dataframe.index.max().strftime('%Y-%m-%d')
+                    min_value = dataframe.index.min().strftime('%Y-%m-%d')
+                    max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
+                    min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')  
+                    value=(min_value,max_value)
+            
+                    Model_var_history = st.slider(
+                    'Date:',
+                    min_value=min_value,
+                    max_value=max_value,
+                    value=value,key='var_history_tab')
+                
+                    selmin, selmax = Model_var_history
+                    selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
+                    selmaxd = selmax.strftime('%Y-%m-%d')
+                    
+                    mask = (dataframe.index >= selmind) & (dataframe.index <= selmaxd)
+                    
+                    range_prices=dataframe.loc[mask].copy()
+                    range_returns=returns_to_use.loc[mask].copy()
+                    
+                    if "results_var_history" not in st.session_state:
+                        st.session_state.results_var_history=None
+                        
+                    if "results_cvar_history" not in st.session_state:
+                        st.session_state.results_cvar_history=None 
+                    series_dict={}
+        
+                    for key in allocation_dataframe.index:
+                        
+                        rebalanced_series=rebalanced_portfolio(range_prices,allocation_dataframe.loc[key])
+                        rebalanced_series_weights=rebalanced_series.apply(lambda x: x/rebalanced_series.sum(axis=1))
+                        buy_and_hold_series=buy_and_hold(range_prices,allocation_dataframe.loc[key])
+                        buy_and_hold_series_weights=buy_and_hold_series.apply(lambda x: x/buy_and_hold_series.sum(axis=1))
+                        series_dict['Rebalanced '+key]=rebalanced_series_weights
+                        series_dict['Buy and Hold '+key]=buy_and_hold_series_weights
+                    
     
-                        st.session_state.var_scenarios = var_scenarios
-                        st.session_state.cvar_scenarios = cvar_scenarios
-                        st.session_state.fund_results = fund_results
-                        var_status.success('Done!')
+                    if not quantities.empty:
+                        portfolio=quantities.loc[range_prices.index]*range_prices
+                        model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
+                        series_dict['Fund']=model_weights
     
-                if st.session_state.fund_results is not None:
+                    if not quantities_overlay.empty:
+                        portfolio=quantities_overlay.loc[range_prices.index]*range_prices
+                        model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
+                        series_dict['Overlay']=model_weights                
+                        
+                    if not quantities_core.empty:
+                        portfolio=quantities_core.loc[range_prices.index]*range_prices
+                        model_weights=portfolio.apply(lambda x: x/portfolio.sum(axis=1))
+                        series_dict['Core']=model_weights         
+                        
+                    # series_dict['Historical Portfolio']=weights_ex_post.loc[mask]
+        
+                    tickers_combined=list(quantities.columns)
+                    tickers_combined=list(set(tickers_combined))
+                    options_vol=list(series_dict.keys())
+    
+                    selected_fund_to_decompose_var_history=st.selectbox("Fund:",options=options_vol,index=len(options_vol)-1,key='selected_fund_to_decompose_var_history')
+    
+                    stress_factor_history=st.number_input("Stress Factor:", min_value=1.0, value=1.0, step=0.1,key='stress_factor_history')
+                    mean_factor_history=st.number_input("Mean Shock Factor:", min_value=0.0, value=1.0, step=0.1,key='mean_factor_history')
+                    iterations_history=st.number_input("Iterations:", min_value=1, value=10000, step=1,key='iterations_history')
+                    var_centile_history=st.number_input("Centile:", min_value=0.00, value=0.05, step=0.01,key='var_centile_history')
+                    window_var_history=st.number_input("Centile:", min_value=30, value=252, step=1,key='window_var_history')
+    
+                    var_function_names={'Multivariate':'multivariate_distribution',
+                       'Gaussian Copula':'gaussian_copula',
+                       'Monte Carlo':'monte_carlo',
+                       'Gumbel Copula':'gumbel_copula',
+                       'T-Copula':'t_copula'}
                     
-                    var_scenarios=st.session_state.var_scenarios
-                    cvar_scenarios=st.session_state.cvar_scenarios
-                    fund_results=st.session_state.fund_results   
+                    func_name=st.selectbox("Method:",options=list(var_function_names.keys()),index=0,key='functions')
                     
-                    columns = ['Multivariate', 'Gaussian Copula', 'T-Student Copula', 'Gumbel Copula', 'Monte Carlo']
-                
-                    var_dataframe = pd.DataFrame(var_scenarios[selected_fund_var])
-                    var_dataframe.columns = columns
-                
-                    cvar_dataframe = pd.DataFrame(cvar_scenarios[selected_fund_var])
-                    cvar_dataframe.columns = columns
-                
-                    fund_results_dataframe = pd.DataFrame(fund_results).T
+                    var_hist_button=st.button("Get Value At Risk History")
+                    var_hist_status=st.empty()
+                    spot=range_prices.iloc[-1]
+                    horizon=1/250
+                    theta=2
                     
-                    st.dataframe(var_dataframe,width='stretch')
-                    st.dataframe(cvar_dataframe,width='stretch')
-                    st.dataframe(fund_results_dataframe,width='stretch')
+                    distrib_functions = {
+                    'multivariate_distribution': (iterations_history, stress_factor_history,mean_factor_history),
+                    'gaussian_copula': (iterations_history, stress_factor_history,mean_factor_history),
+                    't_copula': (iterations_history, stress_factor_history,mean_factor_history),
+                    'gumbel_copula': (iterations_history, theta,stress_factor_history,mean_factor_history),
+                    'monte_carlo': (spot, horizon, iterations_history,stress_factor_history,mean_factor_history)}
+    
+                    method=var_function_names[func_name]
+                    args=distrib_functions[method]
+                    
+                    if var_hist_button:
+                        st.session_state.results_var_history=None
+                        st.session_state.results_cvar_history=None
+        
+                        with st.spinner("Computing VaR History...",show_time=True):
+                            
+                            results_dict_var = {}
+                            results_dict_cvar = {}
+                                                    
+                            
+                            tasks=[(key,method,args,range_returns,series_dict[key],window_var_history,var_centile_history) for key in series_dict]
+                            
+                            for name,func,arg,returns,weight,window,centile in tasks:
+                    
+                                common_col=returns.columns.intersection(weight.columns)
+                                common_index=returns.index.intersection(weight.index)
+                                
+                                var_data,cvar_data=get_var_contribution(func,arg,returns.loc[common_index,common_col],weight.loc[common_index,common_col],window_var_history,var_centile_history)
+                                results_dict_var[name]=var_data['Portfolio']
+                                results_dict_cvar[name] =cvar_data['Portfolio']
+                                                
+                            result_var = pd.concat(results_dict_var.values(),axis=1)
+                            result_cvar = pd.concat(results_dict_cvar.values(), axis=1)
+                            
+                            result_var.columns=list(results_dict_var.keys())
+                            result_cvar.columns=list(results_dict_var.keys())
+    
+                            st.session_state.results_var_history= result_var
+                            st.session_state.results_cvar_history= result_cvar
+                                                    
+                            var_hist_status.success('Done!')
+                
+                if st.session_state.results_var_history is not None:
+                        
+                    series_weights=series_dict[selected_fund_to_decompose_var_history]
+                    
+                    mask = (series_weights.index >= selmind) & (series_weights.index <= selmaxd)
+                    
+                    results_var=st.session_state.results_var_history
+                    results_cvar=st.session_state.results_cvar_history
+                    
+                    common=series_weights.columns.intersection(range_returns.columns)
+                    common_index=series_weights.index.intersection(range_returns.index)
+                    
+                    var,cvar=get_var_contribution(method,args,
+                                                    range_returns.loc[common_index,common].loc[mask],
+                                                    series_weights.loc[common_index,common].loc[mask],
+                                                    window_var_history,
+                                                    var_centile_history
+                                                 )
+                                        
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        
+                        mask = (results_var.index >= selmind) & (results_var.index <= selmaxd)
+                        
+                        fig = px.line(results_var.loc[mask], title='Portfolios Value At Risk', width=800, height=400, render_mode = 'svg')
+                        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Historical Portfolio","Fund"])
+                        fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                        st.plotly_chart(fig,width='content')
+        
+                        fig4 = px.line(var, title='Value at Risk History', width=800, height=400, render_mode = 'svg')
+                        fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                        fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Portfolio"])
+                        st.plotly_chart(fig4,width='content')
+                        
+                    with col2:
+                        
+                        fig2 = px.line(results_cvar, title='Portfolio Expected Shortfall', width=800, height=400, render_mode = 'svg')
+                        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                        fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Historical Portfolio","Fund"])
+                        st.plotly_chart(fig2,width='content')
+                    
+        
+                        fig3 = px.line(cvar, title='Expected Shortfall History', width=800, height=400, render_mode = 'svg')
+                        fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Portfolio"])
+                        fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
+                        st.plotly_chart(fig3,width='content')
+                else:
+    
+                    st.info("Load data first ⬅️")
+
                     
     
     with main_tabs[3]:
