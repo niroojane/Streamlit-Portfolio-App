@@ -13,112 +13,189 @@ import scipy.optimize as sco
 from scipy.optimize import minimize
 import datetime
 from statsmodels.stats.correlation_tools import cov_nearest
+from joblib import Parallel, delayed
 
 
 # # General Functions
+def get_var_contribution(func_name, args, returns, weights_series,
+                                 window=252, var_centile=0.05, n_jobs=-1):
 
-def get_ex_ante_vol(weights_series,returns,window=252):
-    dico_results={}
-    
-    for i in range(returns.shape[0]-window):
-        subset=returns.iloc[i:i+window]
-        weights=weights_series.loc[subset.index[-1]]
-        weights=weights[weights != 0]
+    def process_window(i):
         
-        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        dico_results[subset.index[-1]]=portfolio_class.variance(weights)
+        try:
+            subset = returns.iloc[i:i+window]
+            weights = weights_series.loc[subset.index[-1]]
+    
+            portfolio = RiskAnalysis(subset.loc[:, weights.index])
+            func = getattr(portfolio, func_name)
+    
+            if func_name == 'monte_carlo':
+                distrib = pd.DataFrame(func(*args)[1],
+                                       columns=portfolio.returns.columns)
+            else:
+                distrib = pd.DataFrame(func(*args),
+                                       columns=portfolio.returns.columns)
+    
+            distrib = distrib.mul(weights, axis=1)
+            distrib['Portfolio'] = distrib.sum(axis=1)
+            var= distrib.sort_values(by='Portfolio').iloc[
+                int(distrib.shape[0] * var_centile)
+            ]
+    
+            cvar = distrib.loc[
+                distrib['Portfolio'] < var['Portfolio']
+            ].mean()
+            
+        except Exception as e:
+            print(f"Error at iteration {i}: {e}")
+            raise
+            
+        return subset.index[-1], var, cvar
 
-    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(process_window)(i)
+        for i in range(returns.shape[0] - window)
+    )
+
+    dico_results_var = {date: var for date, var, _ in results}
+    dico_results_cvar = {date: cvar for date, _, cvar in results}
+
+    var_dataframe = pd.DataFrame.from_dict(dico_results_var, orient='index').sort_index()
+    cvar_dataframe = pd.DataFrame.from_dict(dico_results_cvar, orient='index').sort_index()
+
+    return var_dataframe, cvar_dataframe
+
+
+def get_ex_ante_vol(weights_series, returns, window=252, n_jobs=-1):
+
+    def process_window(i):
+        subset = returns.iloc[i:i+window]
+        weights = weights_series.loc[subset.index[-1]]
+        weights = weights[weights != 0]
+
+        portfolio_class = RiskAnalysis(subset.loc[:, weights.index])
+        return subset.index[-1], portfolio_class.variance(weights)
+
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(process_window)(i)
+        for i in range(returns.shape[0] - window)
+    )
+
+    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
 
     return dataframe
+    
+def get_ex_ante_vol_contribution_in_pct(weights_series, returns, window=252, n_jobs=-1):
 
-def get_ex_ante_vol_contribution_in_pct(weights_series,returns,window=252):
-    
-    dico_results={}
-    
-    for i in range(returns.shape[0]-window):
+    def process_window(i):
         subset=returns.iloc[i:i+window]
         weights=weights_series.loc[subset.index[-1]]
         weights=weights[weights != 0]
         portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        dico_results[subset.index[-1]]=portfolio_class.var_contrib_pct(weights)['Vol Contribution in %']
+        return subset.index[-1],portfolio_class.var_contrib_pct(weights)['Vol Contribution in %']
 
-    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(process_window)(i)
+        for i in range(returns.shape[0] - window)
+    )
+    
+    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
     dataframe['Total Vol in %']=dataframe.sum(axis=1)
-    return dataframe
+    
+    return dataframe    
 
-def get_ex_ante_vol_contribution(weights_series,returns,window=252):
     
-    dico_results={}
-    
-    for i in range(returns.shape[0]-window):
+def get_ex_ante_vol_contribution(weights_series, returns, window=252, n_jobs=-1):
+
+    def process_window(i):
         subset=returns.iloc[i:i+window]
         weights=weights_series.loc[subset.index[-1]]
         weights=weights[weights != 0]
         portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Vol Contribution']
+        return subset.index[-1],portfolio_class.var_contrib(weights)[0]['Vol Contribution']
 
-    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(process_window)(i)
+        for i in range(returns.shape[0] - window)
+    )
+    
+    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
     dataframe['Total Vol']=dataframe.sum(axis=1)
     
-    return dataframe
+    return dataframe    
 
-def get_correlation_contribution(weights_series,returns,window=252):
-    
-    dico_results={}
-    
-    for i in range(returns.shape[0]-window):
+def get_correlation_contribution(weights_series, returns, window=252, n_jobs=-1):
+
+    def process_window(i):
         subset=returns.iloc[i:i+window]
         weights=weights_series.loc[subset.index[-1]]
         weights=weights[weights != 0]
         portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Correlation']
+        return subset.index[-1],portfolio_class.var_contrib(weights)[0]['Correlation']
 
-    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(process_window)(i)
+        for i in range(returns.shape[0] - window)
+    )
+    
+    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
     dataframe['Total Correlation']=dataframe.sum(axis=1)
     
-    return dataframe
+    return dataframe 
     
-def get_idiosyncratic_contribution(weights_series,returns,window=252):
-    
-    dico_results={}
-    
-    for i in range(returns.shape[0]-window):
+def get_idiosyncratic_contribution(weights_series, returns, window=252, n_jobs=-1):
+
+    def process_window(i):
         subset=returns.iloc[i:i+window]
         weights=weights_series.loc[subset.index[-1]]
         weights=weights[weights != 0]
         portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        dico_results[subset.index[-1]]=portfolio_class.var_contrib(weights)[0]['Idiosyncratic Risk']
+        return subset.index[-1],portfolio_class.var_contrib(weights)[0]['Idiosyncratic Risk']
 
-    dataframe=pd.DataFrame(dico_results.values(),index=dico_results.keys())
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(process_window)(i)
+        for i in range(returns.shape[0] - window)
+    )
+    
+    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
     dataframe['Total Idiosyncratic Vol']=dataframe.sum(axis=1)
     
     return dataframe
     
-def first_pca_over_time(returns,window=252):
-    dico = {}
-    for i in range(0, returns.shape[0]):
-        temp = returns.iloc[i:i+window]
-        index=temp.index[-1]
-        # skip incomplete last window if needed
-        if temp.shape[0] < window:
-            continue
-    
-        cov_matrix = temp.cov()
-    
-        eig_val, eig_vec = np.linalg.eigh(cov_matrix)
-    
-        # sort eigenvalues descending
-        idx = eig_val.argsort()[::-1]
-        eig_val = eig_val[idx]
-    
-        variance_explained = eig_val / eig_val.sum()
-    
-        dico[index] = variance_explained[0]
-        
-    results=pd.DataFrame(dico.values(),index=dico.keys())
 
-    return results
+def first_pca_over_time(returns, window=252, n_jobs=-1):
+
+    def process_window(i):
+        temp = returns.iloc[i:i+window]
+
+        # skip incomplete window
+        if temp.shape[0] < window:
+            return None
+
+        index = temp.index[-1]
+
+        cov_matrix = temp.cov()
+        eig_val, _ = np.linalg.eigh(cov_matrix)
+
+        # sort descending
+        eig_val = eig_val[::-1]
+
+        variance_explained = eig_val / eig_val.sum()
+
+        return index, variance_explained[0]
+
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(process_window)(i)
+        for i in range(returns.shape[0])
+    )
+
+    # remove None results
+    results = [r for r in results if r is not None]
+
+    dico = dict(results)
+    dataframe = pd.DataFrame.from_dict(dico, orient='index').sort_index()
+
+    return dataframe
 
     
 def halton_sequences(number,base=2):
@@ -748,6 +825,7 @@ class RiskAnalysis(Portfolio):
         if not is_pos_def(corr_matrix):
             corr_matrix=cov_nearest(corr_matrix)
             
+            
         cholesky=np.linalg.cholesky(corr_matrix)
         simulation=np.matmul(cholesky,randoms).T
         simulation=pd.DataFrame(simulation)
@@ -798,7 +876,7 @@ class RiskAnalysis(Portfolio):
 
         if not is_pos_def(corr_matrix):
             corr_matrix=cov_nearest(corr_matrix)
-        
+                
         cholesky=np.linalg.cholesky(corr_matrix)
             
         simulation=np.matmul(cholesky,randoms)/np.sqrt(ChiSquared/df)
@@ -861,7 +939,7 @@ class RiskAnalysis(Portfolio):
         shocked_means=self.returns.mean()*250*mean_return_shock
         
         corr_matrix=np.clip(corr_matrix,-1,1)
-
+        
         if not is_pos_def(corr_matrix):
             corr_matrix = cov_nearest(corr_matrix)
         
@@ -869,7 +947,8 @@ class RiskAnalysis(Portfolio):
         
         drift = np.exp((shocked_means - 0.5 * vol**2) * horizon)        
         factors=spot*drift
-        factors_vec=factors.to_numpy().reshape(num_asset,-1)
+        
+        factors_vec=factors.to_numpy().reshape(len(factors),-1)
                 
         simulation=np.matmul(cholesky,randoms).T
         simulation=pd.DataFrame(simulation)
