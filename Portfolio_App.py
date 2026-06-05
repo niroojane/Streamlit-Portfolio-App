@@ -51,8 +51,6 @@ if uploaded_file:
         max_value = prices_original.index.max().strftime('%Y-%m-%d')
         min_value = prices_original.index.min().strftime('%Y-%m-%d')
 
-        value=(min_value,max_value)
-
         col1,col2=st.columns([1,1])
         with col1:
             
