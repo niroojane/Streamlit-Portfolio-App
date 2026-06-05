@@ -46,23 +46,23 @@ if uploaded_file:
 
     with tab1:
         st.title("Asset View")
+        
         prices_original.index = pd.to_datetime(prices_original.index)
-    
         max_value = prices_original.index.max().strftime('%Y-%m-%d')
         min_value = prices_original.index.min().strftime('%Y-%m-%d')
-        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
-        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
+
         value=(min_value,max_value)
-        
-        Model = st.slider(
-            'Date:',
-            min_value=min_value,
-            max_value=max_value,
-            value=value)
-    
-        selmin, selmax = Model
-        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
-        selmaxd = selmax.strftime('%Y-%m-%d')
+
+        col1,col2=st.columns([1,1])
+        with col1:
+            
+            start_date=st.date_input(label="Start Date",value=min_value,min_value=min_value,max_value=max_value)
+        with col2:
+            
+            end_date=st.date_input(label="End Date",value=max_value,min_value=min_value,max_value=max_value)
+
+        selmind = start_date.strftime('%Y-%m-%d') 
+        selmaxd = end_date.strftime('%Y-%m-%d')
         
         # Filter data by selected date range
         mask = (prices_original.index >= selmind) & (prices_original.index <= selmaxd)
@@ -316,22 +316,22 @@ if uploaded_file:
     with tab2:
         
         st.title("Efficient Frontier")
-
+        
+        prices_original.index = pd.to_datetime(prices_original.index)
         max_value = prices_original.index.max().strftime('%Y-%m-%d')
         min_value = prices_original.index.min().strftime('%Y-%m-%d')
-        max_value=datetime.datetime.strptime(max_value, '%Y-%m-%d')
-        min_value=datetime.datetime.strptime(min_value, '%Y-%m-%d')
-        value=(min_value,max_value)
-        
-        Model = st.slider(
-            'Date Efficient Frontier:',
-            min_value=min_value,
-            max_value=max_value,
-            value=value)
+
+        col1,col2=st.columns([1,1])
+        with col1:
+            
+            start_date=st.date_input(label="Start Date",value=min_value,min_value=min_value,max_value=max_value,key='start_date2')
+        with col2:
+            
+            end_date=st.date_input(label="End Date",value=max_value,min_value=min_value,max_value=max_value,key='end_date2')
+                
     
-        selmin, selmax = Model
-        selmind = selmin.strftime('%Y-%m-%d')  # datetime to str
-        selmaxd = selmax.strftime('%Y-%m-%d')
+        selmind = start_date.strftime('%Y-%m-%d')  # datetime to str
+        selmaxd = end_date.strftime('%Y-%m-%d')
         
         # Filter data by selected date range
         mask = (prices_original.index >= selmind) & (prices_original.index <= selmaxd)
