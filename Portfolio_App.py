@@ -70,33 +70,15 @@ if uploaded_file:
         # Load Excel file and ensure datetime index
         
         st.subheader("Asset Returns")
-    
-        ret=prices.iloc[-1]/prices.iloc[0]-1
-        ytd=(1+ret)**(365/(prices.index[-1]-prices.index[0]).days)-1
-        ret_ytd=prices.loc[datetime.datetime(max(prices.index.year), 1, 1):].iloc[-1]/prices.loc[datetime.datetime(max(prices.index.year),1,1):].iloc[0]-1
-        
-        perfs=pd.concat([ret,ret_ytd,ytd],axis=1)
-        perfs.columns=['Returns since '+ pd.to_datetime(prices.index[0], format='%Y-%d-%m').strftime("%Y-%m-%d"),
-                  'Returns since '+datetime.datetime(max(prices.index.year), 1, 1).strftime("%Y-%m-%d"),
-                  'Annualized Returns']
-    
-        st.dataframe(perfs.T,width='stretch')
+        asset_returns=get_asset_returns(prices)
+
+        st.dataframe(asset_returns,width='stretch')
         
         st.subheader("Asset Risk")
         
-        dates_drawdown=((prices-prices.cummax())/prices.cummax()).idxmin()
-        monthly_vol=prices.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
-    
-        drawdown=pd.DataFrame((((prices-prices.cummax()))/prices.cummax()).min())
-        Q=0.05
-        intervals=np.arange(Q, 1, 0.0005, dtype=float)
-        cvar=monthly_vol*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
-        vol=prices.pct_change().iloc[-360:].std()*np.sqrt(260)
-    
-        risk=pd.concat([vol,monthly_vol,cvar,drawdown,dates_drawdown],axis=1).round(4)
-        risk.columns=['Annualized Volatility (daily)','Annualized Volatility (Monthly)','CVar Parametric '+str(int((1-Q)*100))+'%','Max Drawdown','Date of Max Drawdown']
-    
-        st.dataframe(risk.T,width='stretch')
+        asset_risk=get_asset_risk(prices)
+        
+        st.dataframe(asset_risk,width='stretch')
         
         st.title("Portfolio Construction")
         
@@ -207,108 +189,99 @@ if uploaded_file:
         for idx in initial_allocation.index:
             allocation_dict[idx]=initial_allocation.loc[idx].to_numpy()
 
-    
-        metrics={}
-        metrics['Expected Returns']={}
-        metrics['Expected Volatility']={}
-        metrics['Sharpe Ratio']={}
-    
-        for key in allocation_dict:
-    
-            metrics['Expected Returns'][key]=(np.round(portfolio.performance(allocation_dict[key]), 4))
-            metrics['Expected Volatility'][key]=(np.round(portfolio.variance(allocation_dict[key]), 4))
-            sharpe_ratio=np.round(portfolio.performance(allocation_dict[key])/portfolio.variance(allocation_dict[key]),2)
-            metrics['Sharpe Ratio'][key]=sharpe_ratio
-        
-        indicators = pd.DataFrame(metrics,index=allocation_dict.keys())
-        
-        st.subheader("Portfolio Metrics")
-        
-        st.dataframe(indicators.T,width='stretch')
+        allocation_final=pd.DataFrame(allocation_dict,index=returns.columns).T
    
-    # Convert the index to datetime and clean the data
-
         with st.sidebar:
-            st.header("⚙️ Settings")
+            st.header("Settings")
             
             benchmark = st.selectbox("Benchmark :", list(allocation_dict.keys()))
             frequency = st.selectbox("Rebalancing Frequency:", ['Monthly','Quarterly','Yearly'])
-            window_rolling=st.number_input("Sliding Window Size:",min_value=0,value=30,step=1)
-        
-        portfolio_returns=pd.DataFrame()
-    
-        
-        for key in allocation_dict:
-            portfolio_returns['Buy and Hold '+key]=buy_and_hold(prices, allocation_dict[key]).sum(axis=1)
-            portfolio_returns['Rebalanced '+key]=rebalanced_portfolio(prices, allocation_dict[key],frequency=frequency).sum(axis=1)
+            window_rolling=st.number_input("Sliding Window Size:",min_value=30,value=252,step=1)
             
-        portfolio_returns.index.name='Date'
-    
-        ret=portfolio_returns.iloc[-1]/portfolio_returns.iloc[0]-1
-        ytd=(1+ret)**(365/(portfolio_returns.index[-1]-portfolio_returns.index[0]).days)-1
-        ret_ytd=portfolio_returns.loc[datetime.datetime(max(portfolio_returns.index.year),1,1):].iloc[-1]/portfolio_returns.loc[datetime.datetime(max(portfolio_returns.index.year),1,1):].iloc[0]-1
+        run_optimization=st.button(label='Run Optimization')
+        if "portfolio_returns" not in st.session_state:
+            st.session_state.portfolio_returns=None
         
-        perfs=pd.concat([ret,ret_ytd,ytd],axis=1)
-        perfs.columns=['Returns since '+ pd.to_datetime(portfolio_returns.index[0], format='%Y-%d-%m').strftime("%Y-%m-%d"),
-                  'Returns since '+datetime.datetime(max(portfolio_returns.index.year), 1, 1).strftime("%Y-%m-%d"),
-                  'Annualized Returns']
+        if "efficient_frontier" not in st.session_state:
+            st.session_state.efficient_frontier=None    
 
-        st.subheader("Performance")
-    
-        st.dataframe(perfs.T,width='stretch')
+        if run_optimization:
+            st.session_state.portfolio_returns=None
+            st.session_state.efficient_frontier=None
+            with st.spinner("Optimizing..",show_time=True):
+                
+                portfolio_returns=pd.DataFrame()
+                
+                for key in allocation_dict:
+                    portfolio_returns['Buy and Hold '+key]=buy_and_hold(prices, allocation_dict[key]).sum(axis=1)
+                    portfolio_returns['Rebalanced '+key]=rebalanced_portfolio(prices, allocation_dict[key],frequency=frequency).sum(axis=1)
         
-        st.subheader("Risk")
+                portfolio_returns.index.name='Date'
+                
+                st.session_state.portfolio_returns=portfolio_returns
+                indicators,fig=get_frontier(returns,allocation_final,constraints)
+                st.session_state.efficient_frontier=(indicators,fig)
+        
+        if "portfolio_returns" not in st.session_state or st.session_state.portfolio_returns is None:
+            st.info('Run Optimization')
+        else:
             
-        tracking_error_daily={}
-        tracking_error_monthly={}
-        monthly_returns=prices.resample('ME').last().iloc[-180:].pct_change()
-    
-    
-        for key in allocation_dict:
-            tracking_error_daily['Buy and Hold '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
-            tracking_error_daily['Rebalanced '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
-            tracking_error_monthly['Buy and Hold '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
-            tracking_error_monthly['Rebalanced '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
-    
-        tracking_error_daily=pd.DataFrame(tracking_error_daily.values(),index=tracking_error_daily.keys(),columns=['Tracking Error (daily)'])
-        tracking_error_monthly=pd.DataFrame(tracking_error_monthly.values(),index=tracking_error_monthly.keys(),columns=['Tracking Error (Monthly)'])
-        
-        ptf_drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()))
-        dates_drawdown=ptf_drawdown.idxmin().dt.date
-        
-        vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
-        monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
-        
-        rolling_vol=portfolio_returns.pct_change().rolling(window_rolling).std()*np.sqrt(260)
-        
-        
-        drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
-        Q=0.05
-        intervals=np.arange(Q, 1, 0.0005, dtype=float)
-        cvar=monthly_vol*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
-    
-        risk=pd.concat([vol,tracking_error_daily,monthly_vol,tracking_error_monthly,cvar,drawdown,dates_drawdown],axis=1).round(4)
-        risk.columns=['Annualized Volatility (daily)','TEV (daily)',
-                      'Annualized Volatility (Monthly)','TEV (Monthly)',
-                      'CVar Parametric '+str(int((1-Q)*100))+'%',
-                      'Max Drawdown','Date of Max Drawdown']
-    
-        st.dataframe(risk.T,width='stretch')
-        
-        st.subheader("Portfolio Value Evolution")
-        
+            portfolio_returns=st.session_state.portfolio_returns
+            indicators,fig_frontier=st.session_state.efficient_frontier
             
-        fig = px.line(portfolio_returns, title="Portfolio Value Evolution", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
-        st.plotly_chart(fig,width='stretch')
-        
-        fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
-        st.plotly_chart(fig2,width='stretch')
-        
-        fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+            risk_benchmark=st.selectbox("Risk Benchmark :", portfolio_returns.columns)
 
-        st.plotly_chart(fig3,width='stretch')
+            st.subheader("Portfolio Metrics")
+            
+            st.dataframe(indicators)
+            
+            st.subheader("Performance")
+            
+
+            perfs=rebalanced_metrics(portfolio_returns)
+            
+            st.dataframe(perfs,width='stretch')
+            
+            st.subheader("Risk")
+          
+            ptf_drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()))
+    
+            rolling_vol=portfolio_returns.pct_change().rolling(window_rolling).std()*np.sqrt(260)
+            rolling_corr=portfolio_returns.pct_change().rolling(window_rolling).corr(portfolio_returns.pct_change()[risk_benchmark])
+            rolling_beta=(portfolio_returns.pct_change().rolling(window_rolling).cov(portfolio_returns.pct_change()[risk_benchmark]))/portfolio_returns.pct_change().rolling(window_rolling).var()
+
+            risk=get_portfolio_risk(allocation_final, prices, portfolio_returns, benchmark)
         
-        st.write(portfolio_returns)
+            st.dataframe(risk,width='stretch')
+            
+            st.subheader("Portfolio Value Evolution")
+            
+            col1,col2=st.columns([1,1])
+            
+    
+            with col1:
+                fig = px.line(portfolio_returns, title="Portfolio Value Evolution", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+                st.plotly_chart(fig,width='stretch')
+                fig4 = px.line(rolling_corr, title=f"Correlation to {risk_benchmark}", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t:  not t.name in [rolling_corr.columns[1]])
+                st.plotly_chart(fig4,width='stretch')
+    
+
+                fig_frontier.update_layout(hoverlabel_namelength=-1)
+                st.plotly_chart(fig_frontier,width='content')
+                
+                
+            with col2:
+                fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+                st.plotly_chart(fig2,width='stretch')
+            
+                fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        
+                st.plotly_chart(fig3,width='stretch')
+                
+                fig5= px.line(rolling_beta, title=f"Rolling Beta vs {risk_benchmark}", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+        
+                st.plotly_chart(fig5,width='stretch')
+            st.write(portfolio_returns)
 
 
     with tab2:
@@ -456,35 +429,50 @@ if uploaded_file:
             variance_contrib_summary=pd.concat([variance_contrib_summary,temp],axis=1)
         variance_contrib_summary.loc['Total']=variance_contrib_summary.sum(axis=0)
         variance_contrib_summary=variance_contrib_summary.sort_values(by=variance_contrib_summary.columns[0],ascending=False)
-        
-        @st.cache_data 
-        def get_frontier_streamlit(returns,global_allocation,_constraints):
-            indicators,fig=get_frontier(returns,global_allocation,_constraints)
-            return indicators,fig
+
 
         
-        indicators,fig=get_frontier_streamlit(returns,current_results_dataframe,constraints)
+        if "efficient_frontier_2" not in st.session_state:
             
-        col1,col2=st.columns([1,1])
-        with col1:
-            st.subheader('Efficient Frontier')
+            st.session_state.efficient_frontier_2=None    
+            
+        run_frontier=st.button(label='Run Efficient Frontier')
 
-            fig.update_layout(hoverlabel_namelength=-1)
-            st.plotly_chart(fig,width='content')
-
-        with col2:
-            st.subheader('Correlation Matrix')
-            fig = px.imshow(returns.corr().round(2),color_continuous_scale='blues',text_auto=True, aspect="auto")
-            fig.update_traces(xgap=2, ygap=2)
-            fig.update_traces(textfont=dict(family="Arial Narrow", size=12))
+        if run_frontier:
+            st.session_state.efficient_frontier_2=None
+            
+            with st.spinner("Optimizing..",show_time=True):
+                indicators,fig=get_frontier(returns,current_results_dataframe,constraints)
+                st.session_state.efficient_frontier_2=indicators,fig
+                
+        if "efficient_frontier_2" in st.session_state and st.session_state.efficient_frontier_2 is not None:
+            
+            indicators,fig=st.session_state.efficient_frontier_2
+            
+            col1,col2=st.columns([1,1])
+            
+            with col1:
+                st.subheader('Efficient Frontier')
     
-            st.plotly_chart(fig,width='content')
+                fig.update_layout(hoverlabel_namelength=-1)
+                st.plotly_chart(fig,width='content')
+    
+            with col2:
+                st.subheader('Correlation Matrix')
+                fig = px.imshow(returns.corr().round(2),color_continuous_scale='blues',text_auto=True, aspect="auto")
+                fig.update_traces(xgap=2, ygap=2)
+                fig.update_traces(textfont=dict(family="Arial Narrow", size=12))
         
-
-        st.subheader("Expected Return")
-        
-        st.dataframe(indicators.T,width='stretch')
-        
+                st.plotly_chart(fig,width='content')
+            
+    
+            st.subheader("Expected Return")
+                
+            st.dataframe(indicators.T,width='stretch')
+        else:
+            st.info('Run Efficient Frontier')
+            
+            
         st.subheader("Risk Reward Decomposition")
         
         # st.dataframe(variance_contrib.fillna(0.0000))
@@ -516,3 +504,4 @@ if uploaded_file:
         
         st.dataframe(pnl.fillna(0).sort_values(by='Profit and Loss (Rebalanced)',ascending=False),width='stretch')
         st.dataframe(variance_contrib_summary,width='stretch')
+        
