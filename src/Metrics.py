@@ -479,7 +479,7 @@ def get_frontier(returns,dataframe,cons=None):
             family="Arial Narrow",
             size=14,
             color="white" 
-        ),
+        ), xaxis_title="Volatility", yaxis_title="Expected Return",
         plot_bgcolor="black", 
         paper_bgcolor="black"  
     )
