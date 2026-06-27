@@ -1439,7 +1439,7 @@ with main_tabs[2]:
                 mean_factor_history=st.number_input("Mean Shock Factor:", min_value=0.0, value=1.0, step=0.1,key='mean_factor_history')
                 iterations_history=st.number_input("Iterations:", min_value=1, value=10000, step=1,key='iterations_history')
                 var_centile_history=st.number_input("Centile:", min_value=0.00, value=0.05, step=0.01,key='var_centile_history')
-                window_var_history=st.number_input("Centile:", min_value=30, value=252, step=1,key='window_var_history')
+                window_var_history=st.number_input("Window:", min_value=30, value=252, step=1,key='window_var_history')
 
                 var_function_names={'Multivariate':'multivariate_distribution',
                    'Gaussian Copula':'gaussian_copula',
