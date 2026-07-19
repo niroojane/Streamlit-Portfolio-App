@@ -24,8 +24,14 @@ def get_var_contribution(func_name, args, returns, weights_series,
         
         try:
             subset = returns.iloc[i:i+window]
+            # subset = subset.replace([np.inf, -np.inf], np.nan)
+            # subset = subset.dropna(axis=1)
+
             weights = weights_series.loc[subset.index[-1]]
-    
+            # weights = weights_series.loc[subset.index[-1], subset.columns]
+            # mask = weights != 0
+            # weights = weights[mask]
+            
             portfolio = RiskAnalysis(subset.loc[:, weights.index])
             func = getattr(portfolio, func_name)
     
@@ -49,7 +55,11 @@ def get_var_contribution(func_name, args, returns, weights_series,
         except Exception as e:
             print(f"Error at iteration {i}: {e}")
             raise
-            
+            # return (
+            #     subset.index[-1],
+            #     pd.Series(np.nan, index=returns.columns.tolist() + ["Portfolio"]),
+            #     pd.Series(np.nan, index=returns.columns.tolist() + ["Portfolio"]),
+            # )            
         return subset.index[-1], var, cvar
 
     results = Parallel(n_jobs=n_jobs, backend="loky")(
@@ -619,6 +629,7 @@ class Portfolio:
 
         return frontier_weights, frontier_returns, frontier_risks,frontier_sharpe_ratio
         
+
     def black_Litterman(self,P,Q,weights,risk_aversion,tau=0.025):
         
         implied_returns=risk_aversion*self.returns.cov().dot(weights).squeeze()
@@ -808,14 +819,49 @@ class RiskAnalysis(Portfolio):
         
         return copula_sample
     
-    def gumbel_copula(self,iterations=10000,theta=2,stress_vec=1.0,mean_return_shock=1.0):
+    # def gumbel_copula(self,iterations=10000,theta=2,stress_vec=1.0,mean_return_shock=1.0):
         
-        uniform_sample=np.random.uniform(size=(iterations,self.returns.shape[1]))
-        gumbel=np.exp(-(-np.log(uniform_sample))**(theta))
-        scaled_gumbel=norm.ppf(gumbel,loc=self.returns.mean()*mean_return_shock,scale=self.returns.std()*stress_vec)
+    #     uniform_sample=np.random.uniform(size=(iterations,self.returns.shape[1]))
+    #     gumbel=np.exp(-(-np.log(uniform_sample))**(theta))
+    #     scaled_gumbel=norm.ppf(gumbel,loc=self.returns.mean()*mean_return_shock,scale=self.returns.std()*stress_vec)
 
-        return scaled_gumbel
-
+    #     return scaled_gumbel
+    def gumbel_copula(self, iterations=10000, theta=2,
+                      stress_vec=1.0, mean_return_shock=1.0):
+    
+        n_assets = self.returns.shape[1]
+    
+        # Step 1: sample positive stable variable
+        V = np.random.uniform(0, np.pi, iterations)
+        W = np.random.exponential(size=iterations)
+    
+        alpha = 1 / theta
+    
+        S = (
+            np.sin(alpha * V) /
+            (np.sin(V) ** alpha)
+            *
+            (
+                np.sin((1-alpha)*V) / W
+            ) ** (1-alpha)
+        )
+    
+        # Step 2: generate dependent uniforms
+        E = np.random.exponential(size=(iterations, n_assets))
+    
+        U = np.exp(-(E / S[:, None]) ** alpha)
+    
+        # Step 3: convert uniforms into stressed returns
+        means = self.returns.mean() * mean_return_shock
+        stds = self.returns.std() * stress_vec
+    
+        scaled_returns = norm.ppf(
+            U,
+            loc=means,
+            scale=stds
+        )
+    
+        return scaled_returns
     def monte_carlo(self,spot,horizon=20/250,iterations=10000,stress_factor=1.0,mean_return_shock=1.0):
         
   
