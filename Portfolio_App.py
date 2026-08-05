@@ -271,16 +271,21 @@ if uploaded_file:
                 
                 
             with col2:
+                
                 fig2 = px.line(ptf_drawdown, title="Portfolio Drawdown", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+                fig2.update_layout(yaxis_tickformat=".2%")
+
                 st.plotly_chart(fig2,width='stretch')
             
                 fig3 = px.line(rolling_vol, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
+                fig3.update_layout(yaxis_tickformat=".2%")
         
                 st.plotly_chart(fig3,width='stretch')
                 
                 fig5= px.line(rolling_beta, title=f"Rolling Beta vs {risk_benchmark}", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Rebalanced Optimal Portfolio","Buy and Hold Optimal Portfolio"])
         
                 st.plotly_chart(fig5,width='stretch')
+                
             st.write(portfolio_returns)
 
 
@@ -454,7 +459,7 @@ if uploaded_file:
             with col1:
                 st.subheader('Efficient Frontier')
     
-                fig.update_layout(hoverlabel_namelength=-1)
+                fig.update_layout(hoverlabel_namelength=-1,yaxis_tickformat=".2%",xaxis_tickformat=".2%")
                 st.plotly_chart(fig,width='content')
     
             with col2:

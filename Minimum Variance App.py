@@ -621,17 +621,17 @@ with main_tabs[1]:
                 fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
                 fig2 = px.line(drawdown, title='Drawdown', width=800, height=400, render_mode = 'svg')
-                fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                 fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
         
             
                 fig3 = px.line(rolling_vol_ptf, title="Portfolio Rolling Volatility", render_mode = 'svg').update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
-                fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
+                fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400,yaxis_tickformat=".2%")
                 fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Fund","Bitcoin"])
                 fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
-                fig4.update_layout(width=800, height=400,title={'text': "Efficient Frontier"})
+                fig4.update_layout(width=800, height=400,title={'text': "Efficient Frontier"},yaxis_tickformat=".2%",xaxis_tickformat=".2%")
                 fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))    
             
                 res = st.session_state.results
@@ -936,13 +936,13 @@ with main_tabs[2]:
                         mask = (results_vol.index >= selmind) & (results_vol.index <= selmaxd)
         
                         fig = px.line(results_vol.loc[mask], title='Ex Ante Volatility', width=800, height=400, render_mode = 'svg')
-                        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Historical Portfolio","Fund"])
                         fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         st.plotly_chart(fig,width='content')
             
                         fig4 = px.line(idiosyncratic_contrib, title='Idiosyncratic Contribution', width=800, height=400, render_mode = 'svg')
-                        fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Idiosyncratic Vol"])
                         st.plotly_chart(fig4,width='content')
@@ -950,14 +950,14 @@ with main_tabs[2]:
                     with col2:
                         
                         fig2 = px.line(contribution_to_vol, title='Volatility Contribution', width=800, height=400, render_mode = 'svg')
-                        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
                         st.plotly_chart(fig2,width='content')
             
                         
                         fig3 = px.line(correlation_contrib, title='Correlation Contribution', width=800, height=400, render_mode = 'svg')
-                        fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Correlation"])
                         fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         st.plotly_chart(fig3,width='content')
@@ -1080,13 +1080,13 @@ with main_tabs[2]:
                         mask = (results_tracking_error.index >= selmind) & (results_tracking_error.index <= selmaxd)
         
                         fig = px.line(results_tracking_error.loc[mask], title='Ex Ante Tracking Error', width=800, height=400, render_mode = 'svg')
-                        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Historical Portfolio","Fund"])
                         fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         st.plotly_chart(fig,width='content')
             
                         fig4 = px.line(idiosyncratic_contrib, title='Idiosyncratic Contribution', width=800, height=400, render_mode = 'svg')
-                        fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Idiosyncratic Vol"])
                         st.plotly_chart(fig4,width='content')
@@ -1094,14 +1094,14 @@ with main_tabs[2]:
                     with col2:
                         
                         fig2 = px.line(contribution_to_vol, title='Tracking Error Contribution', width=800, height=400, render_mode = 'svg')
-                        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
                         st.plotly_chart(fig2,width='content')
             
                         
                         fig3 = px.line(correlation_contrib, title='Correlation Contribution', width=800, height=400, render_mode = 'svg')
-                        fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                        fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                         fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Correlation"])
                         fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
                         st.plotly_chart(fig3,width='content')
@@ -1522,13 +1522,13 @@ with main_tabs[2]:
                     mask = (results_var.index >= selmind) & (results_var.index <= selmaxd)
                     
                     fig = px.line(results_var.loc[mask], title='Portfolios Value At Risk', width=800, height=400, render_mode = 'svg')
-                    fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Historical Portfolio","Fund"])
                     fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     st.plotly_chart(fig,width='content')
     
                     fig4 = px.line(var, title='Value at Risk History', width=800, height=400, render_mode = 'svg')
-                    fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Portfolio"])
                     st.plotly_chart(fig4,width='content')
@@ -1536,14 +1536,14 @@ with main_tabs[2]:
                 with col2:
                     
                     fig2 = px.line(results_cvar, title='Portfolio Expected Shortfall', width=800, height=400, render_mode = 'svg')
-                    fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     fig2.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Historical Portfolio","Fund"])
                     st.plotly_chart(fig2,width='content')
                 
     
                     fig3 = px.line(cvar, title='Expected Shortfall History', width=800, height=400, render_mode = 'svg')
-                    fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Portfolio"])
                     fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     st.plotly_chart(fig3,width='content')
@@ -1618,11 +1618,11 @@ with main_tabs[3]:
     
     
             fig=px.bar(variance_explained_dataframe,title='Variance Explanation in %')
-            fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400) 
+            fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white", width=800, height=400,yaxis_tickformat=".2%") 
             fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
     
             fig2=px.bar(pca_portfolio,title='Eigen Weights')
-            fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400) 
+            fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400,yaxis_tickformat=".2%")
             fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
             fig3=px.line((1+historical_PCA).cumprod()*100,title='Eigen Index', render_mode = 'svg')
@@ -1693,11 +1693,11 @@ with main_tabs[3]:
             fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
             
             fig3=px.line(pca_over_time,title='First principal component (Variance Explained in %)', render_mode = 'svg')
-            fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
+            fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400,yaxis_tickformat=".2%")
             fig3.update_layout(xaxis_title=None, yaxis_title=None)
 
             fig4=px.line(rolling_mean_returns,title='Mean Return', render_mode = 'svg')
-            fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400)
+            fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",width=800, height=400,yaxis_tickformat=".2%")
             fig4.update_layout(xaxis_title=None, yaxis_title=None)
             fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in [dropdown_asset1,dropdown_asset2])
             
@@ -1837,7 +1837,7 @@ with main_tabs[3]:
                     fig2.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     
                     fig3 = px.line(correlation_contribution, title='Market Correlation', width=800, height=400, render_mode = 'svg')
-                    fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig3.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Correlation"])
                     fig3.update_traces(textfont=dict(family="Arial Narrow", size=15))
                      
@@ -1848,17 +1848,17 @@ with main_tabs[3]:
                 with col2:
             
                     fig4 = px.line(vol_contribution, title='Market Volatility', width=800, height=400, render_mode = 'svg')
-                    fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig4.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig4.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Vol"])
                     fig4.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     
                     fig5 = px.line(idiosyncratic_contribution, title='Market Intrinsic Volatility', width=800, height=400, render_mode = 'svg')
-                    fig5.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig5.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig5.update_traces(visible="legendonly", selector=lambda t: not t.name in ["Total Idiosyncratic Vol"])
                     fig5.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     
                     fig6 = px.line(weights_series, title='Market Weights', width=800, height=400, render_mode = 'svg')
-                    fig6.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")
+                    fig6.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white",yaxis_tickformat=".2%")
                     fig6.update_traces(visible="legendonly", selector=lambda t: not t.name in ["BTCUSDT"])
                     fig6.update_traces(textfont=dict(family="Arial Narrow", size=15))
                     
