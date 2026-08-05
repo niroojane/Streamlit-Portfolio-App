@@ -266,7 +266,7 @@ if uploaded_file:
                 st.plotly_chart(fig4,width='stretch')
     
 
-                fig_frontier.update_layout(hoverlabel_namelength=-1)
+                fig_frontier.update_layout(hoverlabel_namelength=-1,yaxis_tickformat=".2%",xaxis_tickformat=".2%")
                 st.plotly_chart(fig_frontier,width='content')
                 
                 
