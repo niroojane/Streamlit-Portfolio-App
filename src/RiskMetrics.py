@@ -194,7 +194,7 @@ def first_pca_over_time(returns, window=252, n_jobs=-1):
 
         return index, variance_explained[0]
 
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
+    results = Parallel(n_jobs=n_jobs, backend="threading")(
         delayed(process_window)(i)
         for i in range(returns.shape[0])
     )
