@@ -43,20 +43,33 @@ def drawdown_contribution(weighted_returns):
     
     for _, idx in weighted_returns.groupby(regime).groups.items():
     
-        # Returns during this drawdown regime
+        # Returns during this regime
         r = weighted_returns.loc[idx]
         rp = portfolio_return.loc[idx]
     
-        # Compound factor from each date through the end of the regime
-        # Example:
-        # factor[t] = (1+r[t+1]) * ... * (1+r[end])
-        factor = (1 + rp).iloc[::-1].cumprod().iloc[::-1]
-        factor = factor / (1 + rp)
+        # ---------------------------------------------------------
+        # Frongello linking factor
+        #
+        # cum_factor[t] = product of (1 + rp) from regime start
+        #                 through t
+        # ---------------------------------------------------------
+        cum_factor = (1 + rp).cumprod()
     
-        # Contribution of each asset at each point in the drawdown
+        # Total growth factor over the regime
+        total_factor = cum_factor.iloc[-1]
+    
+        # Future factor:
+        # product of (1 + rp) AFTER date t
+        factor = total_factor / cum_factor
+    
+        # For the last date, there are no future returns
+        factor = factor.shift(-1, fill_value=1.0)
+    
+        # Frongello contribution
         contribution_to_drawdown.loc[idx] = (
             r.mul(factor, axis=0).cumsum()
         )
+            
     
     contribution_to_drawdown=contribution_to_drawdown.ffill()
     return contribution_to_drawdown
