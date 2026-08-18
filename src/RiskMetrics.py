@@ -17,6 +17,50 @@ from joblib import Parallel, delayed
 
 
 # # General Functions
+
+
+def drawdown_contribution(weighted_returns):
+    
+    portfolio_return = weighted_returns.sum(axis=1)
+
+    # Wealth index
+    wealth = (1 + portfolio_return).cumprod()
+    
+    # High-water mark
+    peak = wealth.cummax()
+    
+    # Drawdown
+    drawdown = wealth / peak - 1
+    
+    # Identify drawdown regimes
+    regime = peak.ne(peak.shift()).cumsum()
+    
+    contribution_to_drawdown = pd.DataFrame(
+        0.0,
+        index=weighted_returns.index,
+        columns=weighted_returns.columns
+    )
+    
+    for _, idx in weighted_returns.groupby(regime).groups.items():
+    
+        # Returns during this drawdown regime
+        r = weighted_returns.loc[idx]
+        rp = portfolio_return.loc[idx]
+    
+        # Compound factor from each date through the end of the regime
+        # Example:
+        # factor[t] = (1+r[t+1]) * ... * (1+r[end])
+        factor = (1 + rp).iloc[::-1].cumprod().iloc[::-1]
+        factor = factor / (1 + rp)
+    
+        # Contribution of each asset at each point in the drawdown
+        contribution_to_drawdown.loc[idx] = (
+            r.mul(factor, axis=0).cumsum()
+        )
+    
+    contribution_to_drawdown=contribution_to_drawdown.ffill()
+    return contribution_to_drawdown
+
 def get_var_contribution(func_name, args, returns, weights_series,
                                  window=252, var_centile=0.05, n_jobs=-1):
 
@@ -194,7 +238,7 @@ def first_pca_over_time(returns, window=252, n_jobs=-1):
 
         return index, variance_explained[0]
 
-    results = Parallel(n_jobs=n_jobs, backend="threading")(
+    results = Parallel(n_jobs=n_jobs, backend="loky")(
         delayed(process_window)(i)
         for i in range(returns.shape[0])
     )
