@@ -18,7 +18,24 @@ from joblib import Parallel, delayed
 
 # # General Functions
 
+def performance_contribution(weighted_returns):
+    
+    portfolio_return = weighted_returns.sum(axis=1)
+    
+    # Wealth index
+    wealth=portfolio_return.copy()
+    wealth.iloc[0]=0
+    wealth = (1 + wealth).cumprod()
+        
+    performance_contrib = (
+    weighted_returns
+    .mul(wealth.shift(1), axis=0)
+    .fillna(0)
+    .cumsum()
+    )
 
+    return performance_contrib
+    
 def drawdown_contribution(weighted_returns):
     
     portfolio_return = weighted_returns.sum(axis=1)
