@@ -17,6 +17,44 @@ from joblib import Parallel, delayed
 
 
 # # General Functions
+def compute_rolling_per_asset_betas(returns_window, benchmark_return_series, window):
+    """Rolling per-asset beta (slope of each asset's return vs. a benchmark
+    return series), computed as rolling covariance / rolling variance.
+
+    This is mathematically identical to the per-window `lstsq` slope used
+    by `compute_per_asset_betas`, but vectorized across the whole history
+    in one pass instead of one `lstsq` call per asset per window -- the
+    difference matters a lot here since this runs on every window change.
+    """
+    common_index = returns_window.index.intersection(benchmark_return_series.index)
+    returns_aligned = returns_window.loc[common_index]
+    benchmark_aligned = benchmark_return_series.loc[common_index]
+
+    rolling_cov = returns_aligned.rolling(window).cov(benchmark_aligned)
+    rolling_var = benchmark_aligned.rolling(window).var()
+    return rolling_cov.div(rolling_var, axis=0)
+
+def compute_per_asset_betas(returns_window, benchmark_return_series):
+    """Simple-regression beta of each asset in `returns_window` vs. a benchmark.
+
+    `benchmark_return_series` should already be a return series (e.g. the
+    output of `some_price_series.pct_change()`), not raw prices/levels.
+    Returns a numpy array of length `returns_window.shape[1]`, one beta per
+    asset column, in the same column order as `returns_window`.
+    """
+    X_raw = returns_window.fillna(0)
+    if X_raw.shape[1] == 0 or X_raw.shape[0] == 0:
+        return np.zeros(X_raw.shape[1])
+
+    y = benchmark_return_series.reindex(X_raw.index).fillna(0)
+    ones = np.ones((X_raw.shape[0], 1))
+    beta = np.zeros(X_raw.shape[1])
+
+    for i in range(X_raw.shape[1]):
+        X_i = np.hstack([ones, X_raw.iloc[:, [i]].to_numpy()])
+        beta[i] = np.linalg.lstsq(X_i, y, rcond=None)[0][1]
+
+    return beta
 
 def performance_contribution(weighted_returns):
     
@@ -459,13 +497,26 @@ def diversification_constraint(sign,limit):
 
     return constraints
 
+def beta_constraint(beta,sign,limit):
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
+
+    if sign=='≤' :
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: limit-np.dot(weights, beta) }]
+    elif sign=='≥' :
+    
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: np.dot(weights, beta) -limit}]
+    else:
+        constraints=[{'type': dico_map[sign], 'fun': lambda weights: np.dot(weights, beta) -limit}]
+
+    return constraints    
+
 def build_constraint(prices, constraint_matrix):
     constraints = []
     dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
 
     drop_down_list_asset = list(prices.columns) + ['All']
     drop_down_list = drop_down_list_asset + [None]
-
+    
     try:
         for row in range(constraint_matrix.shape[0]):
             temp = constraint_matrix[row, :]
@@ -1032,6 +1083,20 @@ class RiskAnalysis(Portfolio):
 
     def var_contrib(self,weights):
         
+        # if np.allclose(weights, 0):
+        #     zero_contrib = pd.DataFrame(
+        #         0.0,
+        #         index=self.returns.columns,
+        #         columns=['Vol Contribution', 'Idiosyncratic Risk', 'Correlation']
+        #     )
+        
+        #     zero_covar = pd.DataFrame(
+        #         0.0,
+        #         index=self.returns.columns,
+        #         columns=self.returns.columns
+        #     )
+        
+        #     return zero_contrib, zero_covar
         # weights_matrix=np.diag(weights)
         # variance_contrib=np.dot(weights_matrix,np.dot(self.returns.cov(),weights_matrix.T))
         
