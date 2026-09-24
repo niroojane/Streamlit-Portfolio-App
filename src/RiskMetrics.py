@@ -508,8 +508,23 @@ def beta_constraint(beta,sign,limit):
     else:
         constraints=[{'type': dico_map[sign], 'fun': lambda weights: np.dot(weights, beta) -limit}]
 
-    return constraints    
+    return constraints
 
+def vol_constraint(cov_matrix, sign, limit):
+
+    def vol(weights):
+        return np.sqrt(weights @ cov_matrix @ weights) * np.sqrt(252)
+
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
+
+    if sign == '≤':
+        constraints = [{'type': dico_map[sign], 'fun': lambda weights: limit - vol(weights)}]
+    elif sign == '≥':
+        constraints = [{'type': dico_map[sign], 'fun': lambda weights: vol(weights) - limit}]
+    else:
+        constraints = [{'type': dico_map[sign], 'fun': lambda weights: vol(weights) - limit}]
+
+    return constraints
 def build_constraint(prices, constraint_matrix):
     constraints = []
     dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
