@@ -1,606 +1,557 @@
 # Copyright (c) 2025 Niroojane Selvam
 # Licensed under the MIT License. See LICENSE file in the project root for full license information.
 
+"""Gradio version of the portfolio app, laid out as the Crypto App notebook of
+Risk Management, on the same engine as the Streamlit / BQuant tabs
+(tabs/engine.py, tabs/charts.py -> src/):
+
+    Investment Universe
+    Strategy             Strategy | Strategy Return
+    Portfolio Analysis   Return Analysis | Beta Analysis
+    Risk Analysis        Volatility Analysis (Risk Contribution | Risk Trajectory | Tracking Error)
+                         Value at Risk (Value at Risk | Value at Risk History)
+    Market Risk          Market Risk | Correlation | Market Drivers
+
+The allocation grid is an editable table: every button reads its current content.
+
+    python Gradio.py
+"""
+from typing import List, Optional
 
 import gradio as gr
-from datetime import datetime
-import pandas as pd
+import joblib
 import numpy as np
-import os
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from scipy.stats import norm, chi2,gumbel_l
-from RiskMetrics import RiskAnalysis,diversification_constraint, create_constraint
-from Rebalancing import rebalanced_portfolio , buy_and_hold
+import pandas as pd
+
+from src import Exposure
+from src import PortfolioAnalytics as analytics
+from src import Workspace as workspace
+from src.Metrics import get_asset_returns, get_asset_risk
+from tabs import charts, engine
+
+CONSTRAINT_HEADERS = ['Target', 'Sign', 'Limit']
+RISK_HEADERS = ['Risk', 'Sign', 'Limit']
+OVERLAY_HEADERS = ['Strategy', 'Limit']
 
 
-allocation_df = pd.DataFrame()
-constraint_data=[]
-constraints=[]
-constraint_table=pd.DataFrame(columns=["Asset", "Sign", "Limit"])
+# =============================================================================
+# Helpers
+# =============================================================================
 
-drop_down_list = []
-constraints_options = []
+def show(frame, index_name: str = '', decimals: int = 4) -> pd.DataFrame:
+    """A frame for gr.Dataframe: the index becomes the first column, numbers rounded (as the notebook)"""
+    if frame is None or (hasattr(frame, 'empty') and frame.empty):
+        return pd.DataFrame()
+    if isinstance(frame, pd.Series):
+        frame = frame.to_frame()
+    frame = frame.copy()
+    if isinstance(frame.index, pd.MultiIndex):
+        frame.index = [' · '.join(map(str, i)) for i in frame.index]
+    if isinstance(frame.index, pd.DatetimeIndex):
+        frame.index = frame.index.strftime('%Y-%m-%d')
+    frame.index.name = index_name or frame.index.name or ''
+    frame = frame.reset_index()
+    for col in frame.columns:
+        if pd.api.types.is_float_dtype(frame[col]):
+            frame[col] = frame[col].round(decimals)
+        elif frame[col].dtype == object:
+            frame[col] = frame[col].map(lambda v: round(v, decimals) if isinstance(v, float) else str(v))
+    frame.columns = [str(c) for c in frame.columns]
+    return frame
 
-def load_excel(file):
-    global allocation_df,prices,returns,portfolio,drop_down_list
 
+def notes(messages) -> str:
+    messages = list(dict.fromkeys(messages or []))
+    return "\n".join(f"- {m}" for m in messages) if messages else ""
+
+
+def grid_from(table, app: dict) -> pd.DataFrame:
+    """Allocation grid from the editable table (first column = allocation names)"""
+    if table is None or len(table) == 0 or 'Allocation' not in table.columns:
+        return pd.DataFrame()
+    grid = table.set_index('Allocation').apply(pd.to_numeric, errors='coerce').fillna(0.0)
+    grid.index = grid.index.astype(str)
+    grid = grid[grid.index != '']
+    return grid.reindex(columns=app['prices'].columns).fillna(0.0)
+
+
+def window(app: dict, start: str, end: str) -> pd.DataFrame:
     try:
-        prices = pd.read_excel(file.name, index_col=0, parse_dates=True)
-
-        if prices.empty:
-            return "Error: The file contains no data."
-
-        returns = prices.pct_change()
-
-        portfolio = RiskAnalysis(returns)
-        optimized_weights = portfolio.optimize(objective="sharpe_ratio")
-        
-        allocation_df = pd.DataFrame(
-            {"Asset": returns.columns, "Optimal Portfolio": optimized_weights}
-        ).set_index("Asset").T 
-        
-        drop_down_list = list(prices.columns) + ['All']+[None]
-        constraints_options = ["=", "≥", "≤"]
-        
-        return "File uploaded successfully!",gr.update(choices=drop_down_list)
+        start, end = pd.Timestamp(start), pd.Timestamp(end)
+    except ValueError:
+        raise gr.Error("Dates must be YYYY-MM-DD")
+    prices = app['prices'].loc[start:end]
+    if len(prices) < 3:
+        raise gr.Error("The date range is too short")
+    return prices
 
 
-    except Exception as e:
-        return f"Error: {str(e)}"
+def need(app: dict, grid: Optional[pd.DataFrame] = None) -> None:
+    if not app or 'prices' not in app:
+        raise gr.Error("Upload a workbook in the Investment Universe tab first")
+    if grid is not None and grid.empty:
+        raise gr.Error("Click 'Optimize Portfolio' in the Strategy tab first")
 
-def add_allocation(new_allocation):
-    
-    global allocation_df, benchmarks,optimzed_weights_constraints
-    
-    optimzed_weights_constraints=portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
-    allocation_df.loc['Constrained Optimal Portfolio'] = optimzed_weights_constraints
-    
-    if not new_allocation or len(new_allocation.strip()) == 0:
-        new_allocation = '1.0'+',0.0' * (len(returns.columns) - 1) 
 
+_WORKSPACES = {}
+
+
+def get_workspace(app: dict, grid: pd.DataFrame, frequency: str):
+    schedules = engine.strategy_schedules(app.get('backtest'))
+    key = joblib.hash((app['prices'], grid, app['profile'], frequency, schedules))
+    if key not in _WORKSPACES:
+        _WORKSPACES.clear()
+        _WORKSPACES[key] = engine.build_workspace(app['prices'], grid, app['profile'], frequency, schedules)
+    return _WORKSPACES[key]
+
+
+def bench_weights(grid: pd.DataFrame, benchmark: Optional[str]):
+    return grid.loc[benchmark] if benchmark and benchmark in grid.index else None
+
+
+def run(func, *args, **kwargs):
     try:
-        new_allocation = [float(x) for x in new_allocation.split(',')]
-
-        if len(new_allocation) != len(allocation_df.columns):
-            return "Error: Number of allocation values does not match the number of assets.", allocation_df
-
-        total = sum(new_allocation)
-        if total != 0:
-            new_allocation = [x / total for x in new_allocation]
-
-        allocation_df.loc["Allocation " + str(len(allocation_df)-1)] = new_allocation
-
-        benchmarks = list(allocation_df.index)
-
-        return allocation_df.reset_index().rename(columns={'index': 'Allocation'}).round(4), gr.update(choices=benchmarks, value=None)
-    
-    except Exception as e:
-        return allocation_df.reset_index().rename(columns={'index': 'Allocation'}).round(4), gr.update(choices=benchmarks, value=None)
-
-def submit(value1, value2, value3):
-    global constraint_table, constraints
-
-    new_row = {"Asset": value1, "Sign": value2, "Limit": value3}
-    constraint_table = pd.concat([constraint_table, pd.DataFrame([new_row])], ignore_index=True)
-
-    constraint_matrix = pd.DataFrame(constraint_table).to_numpy()
-    constraints = []
-    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
-
-    try:
-        for row in range(constraint_matrix.shape[0]):
-            temp = constraint_matrix[row, :]
-            ticker = temp[0]
-
-            if ticker not in drop_down_list:
-                continue
-
-            sign = temp[1]
-            limit = float(temp[2])
-
-            if ticker == 'All': 
-                constraint = diversification_constraint(sign, limit)
-            elif ticker not in prices.columns:
-                continue  
-            else:
-                position = np.where(prices.columns == ticker)[0][0]
-                constraint = create_constraint(sign, limit, position)
-        
-            constraints.extend(constraint)
-
-    except Exception as e:
-        pass
-
-    return constraint_table
-        
-def reset_constraints():
-    
-    global constraint_table, constraints
-    constraint_table=pd.DataFrame(columns=["Asset", "Sign", "Limit"])
-    constraints = []
-    return constraint_table
-    
-def clear_allocation():
-    
-    global allocation_df
-    
-    optimized_weights = portfolio.optimize(objective="sharpe_ratio")
-    optimzed_weights_constraints=portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
-
-    allocation_df = pd.DataFrame(
-        {"Asset": returns.columns, "Optimal Portfolio": optimized_weights,
-         "Constrained Optimal Portfolio":optimzed_weights_constraints}
-    ).set_index("Asset").T 
-    
-    
-    return allocation_df.reset_index().rename(columns={'index': 'Allocation'}).round(4)
-    
-def load_choices():
-    return benchmarks
-    
-def get_asset_returns():
-
-    if prices is None:
-        return "No file uploaded yet."
-    
-    ret = prices.iloc[-1] / prices.iloc[0] - 1
-    ytd = (1 + ret) ** (365 / (prices.index[-1] - prices.index[0]).days) - 1
-
-    year_start = datetime(prices.index[-1].year, 1, 1)
-    if year_start not in prices.index:
-        year_start = prices.index[prices.index >= year_start][0]
-
-    ret_ytd = prices.loc[year_start:].iloc[-1] / prices.loc[year_start:].iloc[0] - 1
-
-    perfs = pd.concat([ret, ret_ytd, ytd], axis=1)
-    perfs.columns = [
-        'Returns since ' + prices.index[0].strftime("%Y-%m-%d"),
-        'Returns since ' + year_start.strftime("%Y-%m-%d"),
-        'Annualized Returns'
-    ]
-    
-    return perfs.T.reset_index().rename(columns={'index': 'Returns'}).round(4)  # Transpose for better readability
-
-def get_asset_risk():
-
-    dates_drawdown=((prices-prices.cummax())/prices.cummax()).idxmin().dt.date
-    
-    vol=prices.pct_change().iloc[-260:].std()*np.sqrt(260)
-    weekly_vol=prices.resample('W').last().iloc[-153:].pct_change().std()*np.sqrt(52)
-    monthly_vol_1Y=prices.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
-    monthly_vol_5Y=prices.resample('ME').last().iloc[-181:].pct_change().std()*np.sqrt(12)
-
-    drawdown=pd.DataFrame((((prices-prices.cummax()))/prices.cummax()).min())
-    Q=0.05
-    intervals=np.arange(Q, 1, 0.0005, dtype=float)
-    cvar=monthly_vol_5Y*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
-
-    risk=pd.concat([vol,weekly_vol,monthly_vol_1Y,monthly_vol_5Y,cvar,drawdown,dates_drawdown],axis=1).round(4)
-    risk.columns=['Annualized Volatility (daily)',
-    'Annualized Volatility 3Y (Weekly)',
-    'Annualized Volatility 5Y (Monthly)','Annualized Volatility since 2020 (Monthly)',
-    'CVar Parametric '+str(int((1-Q)*100))+'%','Max Drawdown','Date of Max Drawdown']
-    
-    return risk.T.reset_index().rename(columns={'index': 'Risks'}).round(4)
-
-def asset_metrics():
-
-    return get_asset_returns(),get_asset_risk()
-
-def get_expected_metrics():
-    
-    allocation_dict={}
-    for idx in allocation_df.index:
-        allocation_dict[idx]=allocation_df.loc[idx].to_numpy()
-    
-    metrics={}
-    metrics['Expected Returns']={}
-    metrics['Expected Volatility']={}
-    metrics['Sharpe Ratio']={}
-
-    for key in allocation_dict:
-
-        metrics['Expected Returns'][key]=(np.round(portfolio.performance(allocation_dict[key]), 4))
-        metrics['Expected Volatility'][key]=(np.round(portfolio.variance(allocation_dict[key]), 4))
-        sharpe_ratio=np.round(portfolio.performance(allocation_dict[key])/portfolio.variance(allocation_dict[key]),2)
-        metrics['Sharpe Ratio'][key]=sharpe_ratio
-
-    indicators = pd.DataFrame(metrics,index=allocation_dict.keys())
-
-    return indicators.T.reset_index().rename(columns={'index': 'Indicators'}).round(4)
-
-
-def rebalanced_time_series(frequency='Monthly'):
-    
-    global portfolio_returns
-    portfolio_returns=pd.DataFrame()
-
-    for key in allocation_df.index:
-        portfolio_returns['Buy and Hold '+key]=buy_and_hold(prices, allocation_df.loc[key]).sum(axis=1)
-        portfolio_returns['Rebalanced '+key]=rebalanced_portfolio(prices, allocation_df.loc[key],frequency=frequency).sum(axis=1)
-
-    portfolio_returns.index.name='Date'
-
-    return portfolio_returns.rename(columns={'index': 'Date'}).round(4)
-
-def rebalanced_metrics():
-
-    global perfs
-    
-    ret=portfolio_returns.iloc[-1]/portfolio_returns.iloc[0]-1
-    ytd=(1+ret)**(365/(portfolio_returns.index[-1]-portfolio_returns.index[0]).days)-1
-    ret_ytd=portfolio_returns.loc[datetime(max(portfolio_returns.index.year),1,1):].iloc[-1]/portfolio_returns.loc[datetime(max(portfolio_returns.index.year),1,1):].iloc[0]-1
-
-    perfs=pd.concat([ret,ret_ytd,ytd],axis=1)
-    perfs.columns=['Returns since '+ pd.to_datetime(portfolio_returns.index[0], format='%Y-%d-%m').strftime("%Y-%m-%d"),
-              'Returns since '+datetime(max(portfolio_returns.index.year), 1, 1).strftime("%Y-%m-%d"),
-              'Annualized Returns']
-    
-    return perfs.T.reset_index().rename(columns={'index': 'Portfolio Returns'}).round(4)
-
-def get_portfolio_risk():
-
-    
-    allocation_dict={}
-        
-    for idx in allocation_df.index:
-        allocation_dict[idx]=allocation_df.loc[idx].to_numpy()
-
-
-    tracking_error_daily={}
-    tracking_error_monthly={}
-    monthly_returns=prices.resample('ME').last().iloc[-180:].pct_change()
-
-
-    for key in allocation_dict:
-        tracking_error_daily['Buy and Hold '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
-        tracking_error_daily['Rebalanced '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
-        tracking_error_monthly['Buy and Hold '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
-        tracking_error_monthly['Rebalanced '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
-
-    tracking_error_daily=pd.DataFrame(tracking_error_daily.values(),index=tracking_error_daily.keys(),columns=['Tracking Error (daily)'])
-    tracking_error_monthly=pd.DataFrame(tracking_error_monthly.values(),index=tracking_error_monthly.keys(),columns=['Tracking Error (Monthly)'])
-
-    dates_drawdown=((portfolio_returns-portfolio_returns.cummax())/portfolio_returns.cummax()).idxmin().dt.date
-    
-    vol=portfolio_returns.pct_change().iloc[:].std()*np.sqrt(260)
-    monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change().std()*np.sqrt(12)
-    
-    drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
-    Q=0.05
-    intervals=np.arange(Q, 1, 0.0005, dtype=float)
-    cvar=monthly_vol*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
-
-    risk=pd.concat([vol,tracking_error_daily,monthly_vol,tracking_error_monthly,cvar,drawdown,dates_drawdown],axis=1).round(4)
-    risk.columns=['Annualized Volatility (daily)','TEV (daily)',
-                  'Annualized Volatility (Monthly)','TEV (Monthly)',
-                  'CVar Parametric '+str(int((1-Q)*100))+'%',
-                  'Max Drawdown','Date of Max Drawdown']
-    
-    return risk.T.reset_index().rename(columns={'index': 'Indicators'}).round(4)
-
-def get_portfolio_evolution(frequency,window=30):
-    
-    rebalanced_time_series(frequency=frequency)
-    ptf_drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()))
-    rolling_window_vol=portfolio_returns.pct_change().rolling(window).std()*np.sqrt(260)
-
-    fig = px.line(portfolio_returns, title="Portfolio Value Evolution",color_discrete_sequence = px.colors.sequential.Sunsetdark,render_mode='svg')
-    fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
-    fig.update_traces(textfont=dict(family="Arial Narrow"))
-
-    fig2=px.line(ptf_drawdown, title="Portfolio Drawdown",color_discrete_sequence = px.colors.sequential.Sunsetdark,render_mode='svg')
-    fig2.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
-    fig2.update_traces(textfont=dict(family="Arial Narrow"))
-
-    fig3=px.line(rolling_window_vol, title="Portfolio Rolling Volatility",color_discrete_sequence = px.colors.sequential.Sunsetdark,render_mode='svg')
-    fig3.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white") 
-    fig3.update_traces(textfont=dict(family="Arial Narrow"))
-
-    return get_expected_metrics(),rebalanced_metrics(),get_portfolio_risk(),fig,fig2,fig3,portfolio_returns.reset_index().rename(columns={'index': 'Portfolio Returns'}).round(4)
-
-
-
-def current_allocation():
-    global optimal_results,optimal_results_dataframe
-
-    optimal_results={}
-
-    # optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
-    # optimized_weights = portfolio.optimize(objective="sharpe_ratio")
-    
-    # optimal_results['Current Optimal Portfolio']=optimized_weights.tolist()
-    # optimal_results['Current Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
-
-    for idx in allocation_df.index:
-        optimal_results[idx]=allocation_df.loc[idx].tolist()
-
-    optimal_results_dataframe=pd.DataFrame(optimal_results,index=prices.columns).T
-
-    return optimal_results_dataframe.reset_index().rename(columns={'index': 'Allocation'}).round(4)
-
-def add_allocation_optimized(new_allocation):
-
-    # global optimal_results,optimal_results_dataframe
-        
-    # # optimized_weights_constraint = portfolio.optimize(objective="sharpe_ratio",constraints=constraints)
-    # # optimized_weights = portfolio.optimize(objective="sharpe_ratio")
-        
-    # # optimal_results['Current Optimal Portfolio']=optimized_weights.tolist()
-    # # optimal_results['Current Optimal Constrained Portfolio']=optimized_weights_constraint.tolist()
-
-    # for idx in optimal_results_dataframe.index:
-    #     optimal_results[idx]=optimal_results_dataframe.loc[idx].tolist()
-
-    # optimal_results_dataframe=pd.DataFrame(optimal_results,index=prices.columns).T
-    
-    if not new_allocation or len(new_allocation.strip()) == 0:
-        new_allocation = '1.0'+',0.0' * (len(returns.columns) - 1)
-        
-    try:
-        
-        new_allocation = [float(x) for x in new_allocation.split(',')]
-
-        if len(new_allocation) != len(optimal_results_dataframe.columns):
-            return "Error: Number of allocation values does not match the number of assets.", optimal_results_dataframe
-
-        total = sum(new_allocation)
-        if total != 0:
-            new_allocation = [x / total for x in new_allocation]
-
-        optimal_results_dataframe.loc["Allocation " + str(len(optimal_results_dataframe)-1)] = new_allocation
-
-        return optimal_results_dataframe.reset_index().rename(columns={'index': 'Allocation'}).round(4)
-    
-    except Exception as e:
-        
-        return optimal_results_dataframe.reset_index().rename(columns={'index': 'Allocation'}).round(4)
-
-def current_metrics():
-    
-    global weight_matrix,metrics
-    
-    weight_matrix={}
-    
-    for idx in optimal_results_dataframe.index:
-        weight_matrix[idx]=optimal_results_dataframe.loc[idx].to_numpy()
-    
-        metrics={}
-        metrics['Returns']={}
-        metrics['Volatility']={}
-        metrics['Sharpe Ratio']={}
-    
-    for key in weight_matrix:
-    
-        metrics['Returns'][key]=(np.round(portfolio.performance(weight_matrix[key]), 4))
-        metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
-        metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
-
-    indicators = pd.DataFrame(metrics,index=weight_matrix.keys()).T
-    
-    return indicators.reset_index().rename(columns={'index': 'Metrics'}).round(4)
-
-def efficient_frontier_fig():
-    
-    frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
-    frontier = pd.DataFrame(
-        {
-            "Returns": frontier_returns,
-            "Volatility": frontier_risks,
-            "Sharpe Ratio": frontier_sharpe_ratio,
-        }
-    )
-    
-    fig = px.scatter(
-        frontier,
-        y="Returns",
-        x="Volatility",
-        color="Sharpe Ratio",
-        color_continuous_scale='blues',
-    )
-    
-    for key in weight_matrix:
-    
-        fig.add_scatter(
-            x=[metrics["Volatility"][key]],
-            y=[metrics["Returns"][key]],
-            mode="markers",
-            marker=dict(color="orange", size=8, symbol="x"),
-            name=key,
-        )
-        
-        
-    fig.add_scatter(
-        x=[metrics["Volatility"]['Optimal Portfolio']],
-        y=[metrics["Returns"]['Optimal Portfolio']],
-        mode="markers",
-        marker=dict(color="red", size=8, symbol="x"),
-        name='Optimal Portfolio',
-    )
-    
-    fig.update_layout(
-        showlegend=False, 
-        hoverlabel_namelength=-1,
-        font=dict(
-            family="Arial Narrow",
-            size=14,
-            color="white" 
-        ),
-        plot_bgcolor="black", 
-        paper_bgcolor="black"  
-    )
-        
-
-
-    return fig
-
-def download_excel(name):
-
-    portfolio_returns.to_excel(name+'.xlsx',index=False)
-
-    return "Time Series Downloaded"
-
-def plot_corr_heatmap():
-    
-    if returns is None:
-        return "No file uploaded yet."
-    
-    fig = px.imshow(returns.corr().round(2), color_continuous_scale='blues', text_auto=True, aspect="auto")
-    fig.update_layout(plot_bgcolor="black", paper_bgcolor="black", font_color="white")  
-    fig.update_traces(xgap=2, ygap=2)
-    fig.update_traces(textfont=dict(family="Arial Narrow", size=15))
-
-    return fig
-
-def get_frontier_metrics():
-
-    ptf_metrics=current_metrics()
-    fig=efficient_frontier_fig()
-    
-    return ptf_metrics,fig
-    
-
-with gr.Blocks(css="* { font-family: 'Arial Narrow', sans-serif; }") as app:
-        
-    with gr.Tab("Portfolio Construction"):
-
-        gr.Markdown("# Upload Data")  
-        file_upload = gr.File(label="Upload Excel File")
-        upload_status = gr.Textbox(label="Upload Status")
-        
-        
-        gr.Markdown("# Asset Metrics")
-        
-        asset_metrics_view = gr.Interface(fn=asset_metrics,
-                                          inputs=None,
-                                          outputs=[gr.DataFrame(label="Asset Returns"),gr.DataFrame(label="Asset Risk")]
-                    )
-        
-
-        
-        gr.Markdown("# Portfolio Allocation")
-
-        
+        return func(*args, **kwargs)
+    except (ValueError, np.linalg.LinAlgError, KeyError) as exc:
+        raise gr.Error(str(exc))
+
+
+def flat(layout) -> list:
+    """charts.*_layout (left, right) -> the figures in the order of plot_columns' components"""
+    left, right = layout
+    return list(left) + list(right)
+
+
+def highlight(app, names) -> List[str]:
+    profile = app['profile']
+    wanted = profile.highlight if app.get('backtest') else ['Rebalanced Optimal Portfolio', profile.benchmark_label]
+    return [n for n in wanted if n in names] or list(names[:2])
+
+
+def span(app, start, end):
+    prices = window(app, start, end)
+    return prices.index[0], prices.index[-1]
+
+
+# =============================================================================
+# Callbacks
+# =============================================================================
+
+def on_upload(file, benchmark):
+    if file is None:
+        return {}, gr.update(choices=[], value=None), "", "", ""
+    raw, exposure, messages = run(engine.read_workbook, open(file, 'rb').read())
+    assets = list(raw.columns)
+    benchmark = benchmark if benchmark in assets else ('BTCUSDT' if 'BTCUSDT' in assets else assets[0])
+    profile = engine.multi_asset(benchmark)
+    prices, more = run(engine.clean_prices, raw, profile)
+    exposure = Exposure.read_exposure(exposure, list(prices.columns)) if exposure is not None else None
+    app = {'prices': prices, 'exposure': exposure, 'profile': profile}
+    return (app, gr.update(choices=assets, value=benchmark), prices.index[0].strftime('%Y-%m-%d'),
+            prices.index[-1].strftime('%Y-%m-%d'), notes(messages + more))
+
+
+def on_benchmark(app, benchmark):
+    if app and 'prices' in app and benchmark:
+        app = {**app, 'profile': engine.multi_asset(benchmark), 'backtest': None}
+    return app
+
+
+def universe_view(app, start, end):
+    need(app)
+    prices = window(app, start, end)
+    levels = workspace.levels(prices.pct_change(fill_method=None).fillna(0))
+    assets = list(prices.columns)
+    targets = engine.constraint_targets(assets, app['exposure'])
+    if app['exposure'] is None:
+        targets = targets + ["(no transparency table: assets and 'All' only)"]
+    return (show(get_asset_returns(prices)), show(get_asset_risk(prices)),
+            *flat(charts.universe_layout(prices, levels, app['profile'].benchmark_ticker)),
+            show(prices, 'Date'), show(app['exposure'], 'Bucket'), show(Exposure.bounds(app['exposure']), 'Bucket'),
+            f"Constraint targets: {', '.join(targets)}",
+            gr.update(choices=assets, value=assets[0]),
+            gr.update(choices=assets, value=assets[min(1, len(assets) - 1)]))
+
+
+def asset_tables(app, start, end):
+    need(app)
+    prices = window(app, start, end)
+    return show(get_asset_returns(prices)), show(get_asset_risk(prices))
+
+
+def optimize(app, start, end, constraints, risk, grid_table, benchmark, frequency):
+    need(app)
+    prices = window(app, start, end)
+    grid, messages = run(engine.optimize_grid, prices, constraints, risk, app['exposure'],
+                         bench_weights(grid_from(grid_table, app), benchmark), frequency)
+    if app.get('backtest'):
+        grid = engine.with_model(grid, app['backtest']['model'])
+    return app, show(grid, 'Allocation', 6), show(Exposure.lookthrough(app['exposure'], grid), 'Bucket'), \
+        notes(messages)
+
+
+def get_results(app, constraints, risk, overlays, grid_table, benchmark, frequency, strategy):
+    need(app)
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    result = run(engine.backtest, app['prices'], strategy, app['profile'], frequency, overlays, constraints, risk,
+                 app['exposure'], bench_weights(grid, benchmark))
+    app = {**app, 'backtest': result}
+    schedules = engine.strategy_schedules(result)
+    tables = [show(schedules[k].round(4), 'Date') if k in schedules else pd.DataFrame()
+              for k in ('Fund', 'Core', 'Overlay')]
+    return (app, show(engine.with_model(grid, result['model']), 'Allocation', 6), notes(result['messages']),
+            *tables, show(result['metrics']))
+
+
+def performance(app, start, end, grid_table, benchmark, frequency, vol_window, constraints, risk):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    prices = window(app, start, end)
+    ws = get_workspace(app, grid, frequency)
+    view = run(workspace.performance_view, ws, prices.index[0], prices.index[-1], grid,
+               benchmark if benchmark in grid.index else '', int(vol_window), None, 0)
+    frontier = run(engine.frontier, prices, grid, constraints, risk, app['exposure'], bench_weights(grid, benchmark),
+                   frequency)
+    names = list(view['levels'].columns)
+    return (show(view['returns_table']), show(view['risk_table']), show(frontier['indicators']),
+            notes(frontier['messages']),
+            *flat(charts.performance_layout(view, frontier, highlight(app, names))))
+
+
+def choices(app, grid_table, frequency):
+    """Refresh every Fund / Benchmark dropdown after the grid or the backtest changed"""
+    grid = grid_from(grid_table, app) if app and 'prices' in app else pd.DataFrame()
+    if grid.empty:
+        return [gr.update()] * 14
+    names = get_workspace(app, grid, frequency).names
+    allocations = list(grid.index)
+    shown = highlight(app, names)
+    fund, bench = shown[0], (shown[-1] if len(shown) > 1 else names[-1])
+    model = 'Model' if 'Model' in allocations else allocations[0]
+    series = lambda value: gr.update(choices=names, value=value)
+    return (gr.update(choices=['None'] + allocations),
+            series(fund), series(bench),                                    # calendar
+            series(fund), series(bench), series(fund), series(bench),       # return / beta analysis
+            gr.update(choices=allocations, value=model), gr.update(choices=allocations, value=allocations[-1]),
+            series(fund), series(fund), series(app['profile'].benchmark_label if app['profile'].benchmark_label in names
+                                               else bench),
+            gr.update(choices=allocations, value=model), series(fund))
+
+
+def calendar(app, start, end, grid_table, frequency, freq, fund, bench):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    if fund == bench:
+        raise gr.Error("Benchmark and Fund must be different")
+    view = run(workspace.calendar_view, get_workspace(app, grid, frequency), *span(app, start, end), fund, bench, freq)
+    return flat(charts.calendar_layout(view, freq))
+
+
+def return_analysis(app, start, end, grid_table, frequency, fund, bench):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    if fund == bench:
+        raise gr.Error("Benchmark and Fund must be different")
+    view = run(workspace.return_analysis_view, get_workspace(app, grid, frequency), *span(app, start, end), fund,
+               bench)
+    return flat(charts.return_analysis_layout(view, fund))
+
+
+def beta_analysis(app, start, end, grid_table, frequency, vol_window, fund, bench):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    view = run(workspace.beta_view, get_workspace(app, grid, frequency), *span(app, start, end), fund, bench,
+               int(vol_window))
+    return flat(charts.beta_layout(view, bench, ['Fund', fund], app['profile'].benchmark_ticker))
+
+
+def risk_contribution(app, start, end, grid_table, frequency, fund, bench):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    if fund not in grid.index or bench not in grid.index:
+        raise gr.Error("Pick a fund and a benchmark allocation")
+    view = run(workspace.risk_contribution_view, window(app, start, end), grid, fund, bench, frequency)
+    return show(view['contribution']), show(view['excess']), show(view['ex_ante'])
+
+
+def risk_trajectory(app, start, end, grid_table, frequency, vol_window, name):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    view = run(workspace.risk_trajectory_view, get_workspace(app, grid, frequency), *span(app, start, end),
+               int(vol_window))
+    name = name if name in view['decomposition'] else next(iter(view['decomposition']))
+    return flat(charts.trajectory_layout(view['volatility'], view['decomposition'][name], ['Fund', name]))
+
+
+def tracking_error(app, start, end, grid_table, frequency, vol_window, name, bench):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    view = run(workspace.tracking_error_view, get_workspace(app, grid, frequency), *span(app, start, end), bench,
+               int(vol_window))
+    options = [n for n in view['decomposition'] if n != bench]
+    if not options:
+        raise gr.Error("No series long enough for the rolling window")
+    name = name if name in options else options[0]
+    return flat(charts.trajectory_layout(view['tracking_error'].drop(columns=bench, errors='ignore'),
+                                         view['decomposition'][name], ['Fund', name], tracking_error=True))
+
+
+def value_at_risk(app, start, end, grid_table, fund, vol_factor, mean_factor, iterations, scenarios, centile):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    prices = window(app, start, end)
+    stress = np.eye(prices.shape[1]) * float(vol_factor)
+    results = run(analytics.value_at_risk, prices, analytics.to_returns(prices), grid, var_centile=float(centile),
+                  iterations=int(iterations), num_scenarios=int(scenarios), stress_factor=stress,
+                  mean_shock=float(mean_factor))
+    fund = fund if fund in results else next(iter(results))
+    tables = engine.var_tables(results, fund, float(centile))
+    return show(tables['summary']), show(tables.get('var_contribution')), show(tables.get('cvar_contribution'))
+
+
+def var_history(app, start, end, grid_table, frequency, vol_window, name, method, centile):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    view = run(workspace.var_history_view, get_workspace(app, grid, frequency), *span(app, start, end),
+               engine.VAR_METHODS[method], int(vol_window), float(centile), 1000, 1.0, 1.0)
+    name = name if name in view['contributions'] else next(iter(view['contributions']), name)
+    return flat(charts.var_history_layout(view, name, ['Fund', name]))
+
+
+def pca(app, start, end, components, component, closest):
+    need(app)
+    returns = analytics.to_returns(window(app, start, end))
+    n = int(min(max(components, 1), returns.shape[1]))
+    view = run(workspace.pca_view, returns, n, component, int(min(max(closest, 1), returns.shape[1])))
+    return flat(charts.pca_layout(view))
+
+
+def correlation(app, start, end, vol_window, asset1, asset2):
+    need(app)
+    first, last = span(app, start, end)
+    returns = app['prices'].pct_change(fill_method=None).iloc[1:].loc[:last]
+    view = run(workspace.correlation_view, returns, asset1, asset2, int(vol_window), first, last)
+    return flat(charts.correlation_layout(view, asset1, asset2))
+
+
+def market_drivers(app, start, end, grid_table, frequency, vol_window, drivers_frequency, component):
+    grid = grid_from(grid_table, app)
+    need(app, grid)
+    view = run(workspace.market_drivers_view, get_workspace(app, grid, frequency), *span(app, start, end),
+               drivers_frequency, component, int(vol_window))
+    return flat(charts.market_drivers_layout(view, app['profile'].highlight, app['profile'].benchmark_ticker))
+
+
+# =============================================================================
+# Layout
+# =============================================================================
+
+def plot_columns(left: int, right: int) -> List[gr.Plot]:
+    """Two columns of plots (the notebook's HBox of two outputs); components in left-then-right order"""
+    with gr.Row():
         with gr.Column():
-            
-            constraints_table = gr.Dataframe(headers=["Asset", "Sign", "Limit"], interactive=False)
-            
-            asset_dropdown = gr.Dropdown(choices=drop_down_list, label="Asset")
-            sign_dropdown = gr.Dropdown(choices=["=", "≥", "≤"], label="Sign")
-            limit_input = gr.Number(label="Limit")
-            
-            file_upload.change(load_excel, inputs=file_upload, outputs=[upload_status, asset_dropdown])
-            submit_button = gr.Button("Add Constraint")
-            reset_button = gr.Button("Reset Constraints")
-            
-
-            submit_button.click(
-                submit,
-                inputs=[asset_dropdown, sign_dropdown, limit_input],
-                outputs=[constraints_table]
-            )
-            
-            reset_button.click(
-                reset_constraints,
-                outputs=[constraints_table]
-            )
-            
-            allocation_table_view = gr.Dataframe(label="Portfolio Allocation", interactive=True)
-            new_allocation_input = gr.Textbox(label="Enter Allocation (comma separated)")
-        
-            add_button = gr.Button("Add Allocation Row")
-            
-            clear_allocation_button = gr.Button("Reset Allocation")
-            clear_allocation_button.click(fn=clear_allocation, inputs=[], outputs=[allocation_table_view])
-
-            
-            dropdown = gr.Dropdown(choices=[], label="Select Benchmark")
-            rolling_window=gr.Number(value=30,label="Select Window for Rolling Volatility")
-            
-
-            add_button.click(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
-            
-            new_allocation_input.submit(fn=add_allocation, inputs=new_allocation_input, outputs=[allocation_table_view,dropdown])
-            
-            output = gr.Textbox(visible=False)
-            output_window = gr.Textbox(visible=False)
-            load_button = gr.Button("Load List",visible=False)
-            
-        
-            load_button.click(fn=load_choices, outputs=dropdown)
-        
-            def show_selection(choice):
-                global benchmark
-                benchmark=choice
-                return f"You selected: {benchmark}"
-
-
-            def show_number(choice):
-                global window
-                window=choice
-                return f"You selected: {window}"
-            
-            dropdown.change(fn=show_selection, inputs=dropdown, outputs=output)
-            
-            rolling_window.change(fn=show_number, inputs=rolling_window, outputs=output_window)
-        
-
-            gr.Markdown("# Portfolio Metrics")
-            
-            rebalancing_frequency = gr.Dropdown(choices=['Monthly','Quarterly','Yearly'], label="Select Rebalancing Frequency",value='Quarterly')
-
-            get_metrics_button = gr.Button("Get Portfolio Metrics")
-            metrics_table = gr.DataFrame(label="Portfolio Expected Metrics")
-            returns_table = gr.DataFrame(label="Portfolio Returns")
-            risk_table = gr.DataFrame(label="Portfolio Risk")
-            time_series_plot = gr.Plot(label="Portfolio Evolution")
-            Drawdown_plot = gr.Plot(label="Portfolio Drawdown")
-            Rolling_Vol_plot = gr.Plot(label="Portfolio Rolling Volatility")
-            
-            time_series_data = gr.DataFrame(label="Portfolio Time Series")
-    
-            get_metrics_button.click(
-                fn=get_portfolio_evolution,
-                inputs=[rebalancing_frequency,rolling_window],
-                outputs=[metrics_table, returns_table, risk_table, time_series_plot,Drawdown_plot,Rolling_Vol_plot,time_series_data])
-
-
-            file_name=gr.Textbox(label="File Name")
-            download_btn=gr.Button("Download Time Series")
-            file_output=gr.Textbox(label="Download Status")
-
-            download_btn.click(fn=download_excel,inputs=file_name,outputs=file_output)
-
-    with gr.Tab("Efficient Frontier"):
+            plots = [gr.Plot() for _ in range(left)]
         with gr.Column():
+            plots += [gr.Plot() for _ in range(right)]
+    return plots
 
-            gr.Markdown("# Portfolio Allocation")
-            
+
+def editor(headers, types, label):
+    return gr.Dataframe(headers=headers, datatype=types, row_count=(1, 'dynamic'), col_count=(len(headers), 'fixed'),
+                        interactive=True, label=label)
 
 
-            allocation_table_current = gr.Dataframe(label="Portfolio Allocation", interactive=True)
-            
-            new_allocation_input_current = gr.Textbox(label="Enter Allocation (comma separated)")
-            
-            init_opt_btn = gr.Button("Get Previous Allocation")
-            init_opt_btn.click(fn=current_allocation, inputs=[], outputs=[allocation_table_current])
+def build() -> gr.Blocks:
+    css = "* { font-family: 'Arial Narrow', Arial, sans-serif; }"
+    with gr.Blocks(css=css, title="Portfolio Construction", theme=gr.themes.Base()) as app_ui:
+        app = gr.State({})
+        gr.Markdown("# Portfolio Construction")
+        with gr.Row():
+            start = gr.Textbox(label="Start date (YYYY-MM-DD)")
+            end = gr.Textbox(label="End date (YYYY-MM-DD)")
 
-            add_button_optimized = gr.Button("Add New Allocation")
-            add_button_optimized.click(fn=add_allocation_optimized, inputs=new_allocation_input_current, outputs=[allocation_table_current])
-    
-            new_allocation_input_current.submit(fn=add_allocation_optimized, inputs=new_allocation_input_current, outputs=[allocation_table_current])
+        # ------------------------------------------------------------------ Investment Universe
+        with gr.Tab("Investment Universe"):
+            with gr.Row():
+                file = gr.File(label="Excel workbook (sheet 1: prices or returns, sheet 2: exposure table)",
+                               file_types=['.xlsx'], type='filepath')
+                benchmark_asset = gr.Dropdown([], label="Benchmark asset")
+            upload_notes = gr.Markdown()
+            refresh_universe = gr.Button("Refresh", variant="primary")
+            u_returns = gr.Dataframe(label="Asset Returns")
+            u_risk = gr.Dataframe(label="Asset Risk")
+            u_plots = plot_columns(1, 1)
+            u_prices = gr.Dataframe(label="Prices", max_height=400)
+            u_exposure = gr.Dataframe(label="Transparency Table (optional sheet 2)")
+            u_bounds = gr.Dataframe(label="Transparency Bounds")
+            targets = gr.Markdown()
 
-            gr.Markdown("# Efficient Frontier")
-            get_portfolio_evolution_graph=gr.Interface(fn=get_frontier_metrics,
-                                                       inputs=None,
-                                                       outputs=[gr.DataFrame(label="Portfolio Expected Metrics")
-                                                                ,gr.Plot(label='Efficient Friontier')])
+        # ------------------------------------------------------------------ Strategy
+        with gr.Tab("Strategy"):
+            with gr.Tab("Strategy"):
+                refresh_assets = gr.Button("Refresh")
+                s_returns = gr.Dataframe(label="Asset Returns")
+                s_risk = gr.Dataframe(label="Asset Risk")
+                with gr.Row():
+                    strategy = gr.Dropdown(list(engine.STRATEGIES), value='Minimum Variance', label="Strategy")
+                    frequency = gr.Dropdown(engine.FREQUENCIES, value='Monthly', label="Frequency")
+                    benchmark = gr.Dropdown(['None'], value='None', label="Benchmark")
+                    vol_window = gr.Number(value=252, precision=0, label="Vol Window")
+                with gr.Row():                       # notebook: inputs | Add / Clear / Optimize
+                    with gr.Column(scale=4):
+                        constraints = editor(CONSTRAINT_HEADERS, ['str', 'str', 'number'],
+                                             "Constraints (Target = asset, 'All' or exposure bucket; Sign ≤ ≥ =)")
+                    with gr.Column(scale=1, min_width=160):
+                        optimize_btn = gr.Button("Optimize Portfolio", variant="primary")
+                strategy_notes = gr.Markdown()
+                grid = gr.Dataframe(label="Allocation (editable; add rows to add allocations)", interactive=True,
+                                    row_count=(1, 'dynamic'))
+                lookthrough = gr.Dataframe(label="Look-through")
+                overlays = editor(OVERLAY_HEADERS, ['str', 'number'], "Overlay (Strategy, Weight)")
+                risk = editor(RISK_HEADERS, ['str', 'str', 'number'],
+                              "Risk Constraints (Volatility, Beta, Tracking Error, Information Ratio)")
+                results_btn = gr.Button("Get Results", variant="primary")
+                results_notes = gr.Markdown()
+                with gr.Row():
+                    final_table = gr.Dataframe(label="Final Strategy", max_height=320)
+                    core_table = gr.Dataframe(label="Core Strategy", max_height=320)
+                    overlay_table = gr.Dataframe(label="Tactical Allocation", max_height=320)
+                fund_metrics = gr.Dataframe(label="Systematic Fund Metrics")
+                perf_btn = gr.Button("Refresh", variant="primary")
+                p_returns = gr.Dataframe(label="Returns")
+                p_risk = gr.Dataframe(label="Risk")
+                p_expected = gr.Dataframe(label="Expected Returns")
+                frontier_notes = gr.Markdown()
+                perf_plots = plot_columns(2, 2)
+            with gr.Tab("Strategy Return"):
+                with gr.Row():
+                    cal_freq = gr.Dropdown(['Year', 'Month'], value='Year', label="Frequency")
+                    cal_fund = gr.Dropdown([], label="Fund")
+                    cal_bench = gr.Dropdown([], label="Benchmark")
+                    cal_btn = gr.Button("Update Perf", variant="primary")
+                cal_plots = plot_columns(2, 2)
 
-            gr.Markdown("# Correlation Matrix")
-            
-            get_corr_matrix=gr.Interface(fn=plot_corr_heatmap,inputs=None,outputs=gr.Plot(label='Correlation Matrix'))
-         
+        # ------------------------------------------------------------------ Portfolio Analysis
+        with gr.Tab("Portfolio Analysis"):
+            with gr.Tab("Return Analysis"):
+                with gr.Row():
+                    ra_fund = gr.Dropdown([], label="Fund")
+                    ra_bench = gr.Dropdown([], label="Benchmark")
+                    ra_btn = gr.Button("Get Return Analysis", variant="primary")
+                ra_plots = plot_columns(2, 2)
+            with gr.Tab("Beta Analysis"):
+                with gr.Row():
+                    beta_fund = gr.Dropdown([], label="Fund")
+                    beta_bench = gr.Dropdown([], label="Benchmark")
+                    beta_btn = gr.Button("Get Beta Analysis", variant="primary")
+                beta_plots = plot_columns(2, 2)
 
-    app.launch()
+        # ------------------------------------------------------------------ Risk Analysis
+        with gr.Tab("Risk Analysis"):
+            with gr.Tab("Volatility Analysis"):
+                with gr.Tab("Risk Contribution"):
+                    with gr.Row():
+                        rc_fund = gr.Dropdown([], label="Fund")
+                        rc_bench = gr.Dropdown([], label="Benchmark")
+                        rc_btn = gr.Button("Get Risk Contribution", variant="primary")
+                    rc_contribution = gr.Dataframe(label="Performance and Risk Contribution")
+                    rc_excess = gr.Dataframe(label="Excess P&L and TE Contribution")
+                    rc_ex_ante = gr.Dataframe(label="Ex Ante Metrics")
+                with gr.Tab("Risk Trajectory"):
+                    with gr.Row():
+                        traj_fund = gr.Dropdown([], label="Fund")
+                        traj_btn = gr.Button("Get Risk History", variant="primary")
+                    traj_plots = plot_columns(2, 2)
+                with gr.Tab("Tracking Error"):
+                    with gr.Row():
+                        te_fund = gr.Dropdown([], label="Fund")
+                        te_bench = gr.Dropdown([], label="Benchmark")
+                        te_btn = gr.Button("Get Tracking Error History", variant="primary")
+                    te_plots = plot_columns(2, 2)
+            with gr.Tab("Value at Risk"):
+                with gr.Tab("Value at Risk"):
+                    var_fund = gr.Dropdown([], label="Fund")
+                    with gr.Row():
+                        vol_factor = gr.Number(value=1.0, label="Stress Factor")
+                        mean_factor = gr.Number(value=1.0, label="Mean Shock Factor")
+                        iterations = gr.Number(value=10000, precision=0, label="Iterations")
+                        scenarios = gr.Number(value=5, precision=0, label="Scenarios")
+                        centile = gr.Number(value=0.05, label="Centile")
+                    var_btn = gr.Button("Run Simulation", variant="primary")
+                    var_summary = gr.Dataframe(label="Summary")
+                    var_results = gr.Dataframe(label="VaR Results")
+                    cvar_results = gr.Dataframe(label="CVaR Results")
+                with gr.Tab("Value at Risk History"):
+                    with gr.Row():
+                        vh_fund = gr.Dropdown([], label="Fund")
+                        vh_method = gr.Dropdown(list(engine.VAR_METHODS), value='Gumbel Copula', label="Distribution")
+                        vh_centile = gr.Number(value=0.05, label="Centile")
+                        vh_btn = gr.Button("Get Value At Risk History", variant="primary")
+                    vh_plots = plot_columns(2, 2)
+
+        # ------------------------------------------------------------------ Market Risk
+        with gr.Tab("Market Risk"):
+            with gr.Tab("Market Risk"):
+                with gr.Row():
+                    components = gr.Number(value=5, precision=0, label="Number of Components")
+                    component = gr.Dropdown([f"PC{i + 1}" for i in range(5)], value='PC1', label="Component")
+                    closest = gr.Number(value=5, precision=0, label="Closest to PCA")
+                    pca_btn = gr.Button("Get Market Risk", variant="primary")
+                pca_plots = plot_columns(2, 2)
+            with gr.Tab("Correlation"):
+                with gr.Row():
+                    asset1 = gr.Dropdown([], label="Asset 1")
+                    asset2 = gr.Dropdown([], label="Asset 2")
+                    corr_btn = gr.Button("Show Correlation", variant="primary")
+                corr_plots = plot_columns(2, 2)
+            with gr.Tab("Market Drivers"):
+                with gr.Row():
+                    drivers_frequency = gr.Dropdown(engine.FREQUENCIES, value='Quarterly', label="Frequency")
+                    drivers_component = gr.Dropdown([f"PC{i + 1}" for i in range(5)], value='PC1', label="Component")
+                    drivers_btn = gr.Button("Get Market Drivers", variant="primary")
+                drivers_plots = plot_columns(3, 3)
+
+        # ------------------------------------------------------------------ wiring
+        universe_outputs = [u_returns, u_risk, *u_plots, u_prices, u_exposure, u_bounds, targets, asset1, asset2]
+        file.change(on_upload, [file, benchmark_asset], [app, benchmark_asset, start, end, upload_notes]) \
+            .then(universe_view, [app, start, end], universe_outputs) \
+            .then(asset_tables, [app, start, end], [s_returns, s_risk])
+        benchmark_asset.change(on_benchmark, [app, benchmark_asset], [app])
+        refresh_universe.click(universe_view, [app, start, end], universe_outputs)
+        refresh_assets.click(asset_tables, [app, start, end], [s_returns, s_risk])
+
+        dropdowns = [benchmark, cal_fund, cal_bench, ra_fund, ra_bench, beta_fund, beta_bench, rc_fund, rc_bench,
+                     traj_fund, te_fund, te_bench, var_fund, vh_fund]
+        perf_inputs = [app, start, end, grid, benchmark, frequency, vol_window, constraints, risk]
+        perf_outputs = [p_returns, p_risk, p_expected, frontier_notes, *perf_plots]
+        optimize_btn.click(optimize, [app, start, end, constraints, risk, grid, benchmark, frequency],
+                           [app, grid, lookthrough, strategy_notes]) \
+            .then(choices, [app, grid, frequency], dropdowns)
+        results_btn.click(get_results, [app, constraints, risk, overlays, grid, benchmark, frequency, strategy],
+                          [app, grid, results_notes, final_table, core_table, overlay_table, fund_metrics]) \
+            .then(choices, [app, grid, frequency], dropdowns) \
+            .then(performance, perf_inputs, perf_outputs)
+        perf_btn.click(performance, perf_inputs, perf_outputs)
+        cal_btn.click(calendar, [app, start, end, grid, frequency, cal_freq, cal_fund, cal_bench], cal_plots)
+
+        ra_btn.click(return_analysis, [app, start, end, grid, frequency, ra_fund, ra_bench], ra_plots)
+        beta_btn.click(beta_analysis, [app, start, end, grid, frequency, vol_window, beta_fund, beta_bench],
+                       beta_plots)
+        rc_btn.click(risk_contribution, [app, start, end, grid, frequency, rc_fund, rc_bench],
+                     [rc_contribution, rc_excess, rc_ex_ante])
+        traj_btn.click(risk_trajectory, [app, start, end, grid, frequency, vol_window, traj_fund], traj_plots)
+        te_btn.click(tracking_error, [app, start, end, grid, frequency, vol_window, te_fund, te_bench], te_plots)
+        var_btn.click(value_at_risk, [app, start, end, grid, var_fund, vol_factor, mean_factor, iterations, scenarios,
+                                      centile], [var_summary, var_results, cvar_results])
+        vh_btn.click(var_history, [app, start, end, grid, frequency, vol_window, vh_fund, vh_method, vh_centile],
+                     vh_plots)
+        pca_btn.click(pca, [app, start, end, components, component, closest], pca_plots)
+        corr_btn.click(correlation, [app, start, end, vol_window, asset1, asset2], corr_plots)
+        drivers_btn.click(market_drivers, [app, start, end, grid, frequency, vol_window, drivers_frequency,
+                                           drivers_component], drivers_plots)
+    return app_ui
+
+
+if __name__ == "__main__":
+    build().launch()

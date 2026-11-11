@@ -9,17 +9,32 @@
 import pandas as pd
 import random
 import numpy as np
-import matplotlib.pyplot as plt
 import datetime
-import seaborn as sns
-
-import plotly.express as px
-import plotly.graph_objects as go
 from scipy.stats import norm, chi2,gumbel_l
 
-from IPython.display import HTML
+# Charts and Jupyter display: used by the notebooks / Streamlit only. Optional, so the
+# web app backend can use the calculations below without installing them.
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
+try:
+    import seaborn as sns
+except ImportError:
+    sns = None
+try:
+    import plotly.express as px
+    import plotly.graph_objects as go
+except ImportError:
+    px = go = None
+try:
+    from IPython.display import HTML
+except ImportError:
+    HTML = None
+
 from io import BytesIO
 import requests
+from requests.exceptions import RequestException
 import base64
 
 from .RiskMetrics import *
@@ -73,6 +88,7 @@ def get_expected_metrics(returns,dataframe):
     indicators = pd.DataFrame(metrics,index=allocation_dict.keys())
 
     return indicators.T.round(4)
+    
 def rebalanced_time_series(prices,dataframe,frequency='Monthly'):
 
     portfolio_returns=pd.DataFrame()
@@ -85,11 +101,24 @@ def rebalanced_time_series(prices,dataframe,frequency='Monthly'):
     
     return portfolio_returns
 
+def _ytd_return(levels):
+    """Return since the previous year's last close (YTD includes the first
+    trading day of the year). Falls back to the first close of the year when
+    the history starts this year."""
+    year_start = datetime.datetime(max(levels.index.year), 1, 1)
+    this_year = levels.loc[year_start:]
+    before = levels[levels.index < year_start]
+    base = before.ffill().iloc[-1] if len(before) else this_year.iloc[0]
+    if isinstance(base, pd.Series):
+        base = base.fillna(this_year.bfill().iloc[0])
+    return this_year.iloc[-1] / base - 1
+
+
 def rebalanced_metrics(portfolio_returns):
 
     ret=portfolio_returns.iloc[-1]/portfolio_returns.iloc[0]-1
     ytd=(1+ret)**(365/(portfolio_returns.index[-1]-portfolio_returns.index[0]).days)-1
-    ret_ytd=portfolio_returns.loc[datetime.datetime(max(portfolio_returns.index.year),1,1):].iloc[-1]/portfolio_returns.loc[datetime.datetime(max(portfolio_returns.index.year),1,1):].iloc[0]-1
+    ret_ytd=_ytd_return(portfolio_returns)
 
     perfs=pd.concat([ret,ret_ytd,ytd],axis=1)
     perfs.columns=['Returns since '+ pd.to_datetime(portfolio_returns.index[0], format='%Y-%d-%m').strftime("%Y-%m-%d"),
@@ -113,30 +142,38 @@ def get_portfolio_risk(dataframe,prices,portfolio_returns,benchmark):
     tracking_error_monthly={}
     monthly_returns=prices.resample('ME').last().iloc[-180:].pct_change()
 
+    # Realized (ex-post) tracking error of each 'Buy and Hold X' / 'Rebalanced X'
+    # series vs the benchmark's series of the same kind -- the two differ once
+    # weights drift. Ex-ante (static weights on asset returns) only when the
+    # series aren't in portfolio_returns.
+    daily_levels = portfolio_returns.pct_change(fill_method=None)
+    monthly_levels = portfolio_returns.resample('ME').last().pct_change(fill_method=None)
 
     for key in allocation_dict:
         if key not in allocation_dict or benchmark not in allocation_dict:
             continue
 
-        tracking_error_daily['Buy and Hold '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
-        tracking_error_daily['Rebalanced '+key]=RiskAnalysis(returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(260)
-        tracking_error_monthly['Buy and Hold '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
-        tracking_error_monthly['Rebalanced '+key]=RiskAnalysis(monthly_returns).variance(allocation_dict[key]-allocation_dict[benchmark])/np.sqrt(252)*np.sqrt(12)
+        for kind in ('Buy and Hold ', 'Rebalanced '):
+            name, bench_name = kind + key, kind + benchmark
+            if name in portfolio_returns.columns and bench_name in portfolio_returns.columns:
+                tracking_error_daily[name] = (daily_levels[name] - daily_levels[bench_name]).std() * np.sqrt(252)
+                tracking_error_monthly[name] = (monthly_levels[name] - monthly_levels[bench_name]).std() * np.sqrt(12)
+            else:
+                active = allocation_dict[key] - allocation_dict[benchmark]
+                tracking_error_daily[name] = RiskAnalysis(returns).variance(active)
+                tracking_error_monthly[name] = RiskAnalysis(monthly_returns).variance(active)/np.sqrt(252)*np.sqrt(12)
 
- 
-            
     tracking_error_daily=pd.DataFrame(tracking_error_daily.values(),index=tracking_error_daily.keys(),columns=['Tracking Error (daily)'])
     tracking_error_monthly=pd.DataFrame(tracking_error_monthly.values(),index=tracking_error_monthly.keys(),columns=['Tracking Error (Monthly)'])
 
     dates_drawdown=((portfolio_returns-portfolio_returns.cummax())/portfolio_returns.cummax()).idxmin().dt.date
-    
-    vol=portfolio_returns.pct_change(fill_method=None).iloc[:].std()*np.sqrt(260)
+
+    vol=portfolio_returns.pct_change(fill_method=None).iloc[:].std()*np.sqrt(252)
     monthly_vol=portfolio_returns.resample('ME').last().iloc[:].pct_change(fill_method=None).std()*np.sqrt(12)
 
     drawdown=pd.DataFrame((((portfolio_returns-portfolio_returns.cummax()))/portfolio_returns.cummax()).min())
     Q=0.05
-    intervals=np.arange(Q, 1, 0.0005, dtype=float)
-    cvar=monthly_vol*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
+    cvar=-monthly_vol*norm.pdf(norm.ppf(Q))/Q    # normal expected shortfall, closed form
 
     risk=pd.concat([vol,tracking_error_daily,monthly_vol,tracking_error_monthly,cvar,drawdown,dates_drawdown],axis=1).round(4)
     risk.columns=['Annualized Volatility (daily)','TEV (daily)',
@@ -150,7 +187,7 @@ def get_asset_returns(prices):
     
     ret=prices.iloc[-1]/prices.iloc[0]-1
     ytd=(1+ret)**(365/(prices.index[-1]-prices.index[0]).days)-1
-    ret_ytd=prices.loc[datetime.datetime(max(prices.index.year), 1, 1):].iloc[-1]/prices.loc[datetime.datetime(max(prices.index.year),1,1):].iloc[0]-1
+    ret_ytd=_ytd_return(prices)
 
     perfs=pd.concat([ret,ret_ytd,ytd],axis=1)
     perfs.columns=['Returns since '+ pd.to_datetime(prices.index[0], format='%Y-%d-%m').strftime("%Y-%m-%d"),
@@ -163,17 +200,18 @@ def get_asset_risk(prices):
 
     dates_drawdown=((prices-prices.cummax())/prices.cummax()).idxmin().dt.date
     
-    vol=prices.pct_change(fill_method=None).iloc[-260:].std()*np.sqrt(260)
-    weekly_vol=prices.resample('W').last().iloc[-153:].pct_change().std()*np.sqrt(52)
-    monthly_vol_1Y=prices.resample('ME').last().iloc[-50:].pct_change().std()*np.sqrt(12)
-    monthly_vol_5Y=prices.resample('ME').last().iloc[-181:].pct_change().std()*np.sqrt(12)
+    # windows match the labels below: 1Y of daily returns (252 + 1 prices),
+    # 3Y of weekly (156 + 1), 5Y of monthly (60 + 1), whole history monthly
+    vol=prices.pct_change(fill_method=None).iloc[-253:].std()*np.sqrt(252)
+    weekly_vol=prices.resample('W').last().iloc[-157:].pct_change(fill_method=None).std()*np.sqrt(52)
+    monthly_vol_5Y=prices.resample('ME').last().iloc[-61:].pct_change(fill_method=None).std()*np.sqrt(12)
+    monthly_vol_all=prices.resample('ME').last().pct_change(fill_method=None).std()*np.sqrt(12)
 
     drawdown=pd.DataFrame((((prices-prices.cummax()))/prices.cummax()).min())
     Q=0.05
-    intervals=np.arange(Q, 1, 0.0005, dtype=float)
-    cvar=monthly_vol_5Y*norm(loc =0 , scale = 1).ppf(1-intervals).mean()/0.05
+    cvar=-monthly_vol_all*norm.pdf(norm.ppf(Q))/Q    # normal expected shortfall, closed form
 
-    risk=pd.concat([vol,weekly_vol,monthly_vol_1Y,monthly_vol_5Y,cvar,drawdown,dates_drawdown],axis=1).round(4)
+    risk=pd.concat([vol,weekly_vol,monthly_vol_5Y,monthly_vol_all,cvar,drawdown,dates_drawdown],axis=1).round(4)
     risk.columns=['Annualized Volatility (daily)',
     'Annualized Volatility 3Y (Weekly)',
     'Annualized Volatility 5Y (Monthly)','Annualized Volatility since '+str(prices.index[0].year) +' (Monthly)',
@@ -275,7 +313,8 @@ def get_monthly_metrics(portfolio_returns, fund='Fund', bench='Bitcoin'):
         tracking_error = (temp[fund] - temp[bench]).std() * np.sqrt(252)
         month_tracking_error[month] = tracking_error
 
-        sharpe = perf_month / vol
+        # annualize the month's return to match the annualized volatility
+        sharpe = ((1 + perf_month) ** 12 - 1) / vol
         month_sharpe_ratio[month] = sharpe
 
     month_returns_df = pd.DataFrame(month_returns).round(4)
@@ -303,6 +342,9 @@ def get_calendar_graph(performance_fund,fund='Fund',benchmark='Bitcoin',freq='Ye
     ]
     
     for i, title in enumerate(titles):
+        # returns, volatility and tracking error in %, the Sharpe ratio as a number
+        fmt = ".3f" if title == f"Sharpe Ratio by {freq}" else ".2%"
+
         if title!=f"Tracking Error by {freq}":
             df = metrics[i].T  # <-- no transpose
             fig = px.bar(
@@ -324,9 +366,9 @@ def get_calendar_graph(performance_fund,fund='Fund',benchmark='Bitcoin',freq='Ye
     
             fig.update_traces(
                 textfont=dict(family="Arial Narrow", size=15),
-                hovertemplate="Year: %{x}<br>%{y:.3f}<extra></extra>")
+                hovertemplate="Year: %{x}<br>%{y:" + fmt + "}<extra></extra>")
 
-            
+
         else:
             
             df = metrics[i]
@@ -346,51 +388,62 @@ def get_calendar_graph(performance_fund,fund='Fund',benchmark='Bitcoin',freq='Ye
             
             fig.update_traces(
                 textfont=dict(family="Arial Narrow", size=15),
-                hovertemplate="Year: %{x}<br>%{y:.3f}<extra></extra>")
-            
+                hovertemplate="Year: %{x}<br>%{y:" + fmt + "}<extra></extra>")
+
+        fig.update_yaxes(tickformat=fmt)
+
         dico_fig[title]=fig
         
     return dico_fig
             
-def get_frontier(returns,dataframe,cons=None):
-    
-    portfolio=RiskAnalysis(returns)
-    frontier_weights, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier()
+def frontier_data(returns, dataframe, cons=None, points=100):
+    """Efficient frontier (unconstrained and, with `cons`, constrained) and
+    the return / volatility / Sharpe ratio of each allocation of `dataframe`.
 
-    if cons is not None:
-        frontier_weights_c, frontier_returns_c, frontier_risks_c, frontier_sharpe_ratio_c = portfolio.efficient_frontier(constraints=cons)
+    Returns (indicators, frontier, frontier_constrained or None).
+    """
+    portfolio = RiskAnalysis(returns)
+    _, frontier_returns, frontier_risks, frontier_sharpe_ratio = portfolio.efficient_frontier(points=points)
+
+    frontier = pd.DataFrame({
+        "Returns": frontier_returns,
+        "Volatility": frontier_risks,
+        "Sharpe Ratio": frontier_sharpe_ratio,
+    })
+
+    frontier_c = None
+    if cons:
+        _, returns_c, risks_c, sharpe_c = portfolio.efficient_frontier(constraints=cons, points=points)
         frontier_c = pd.DataFrame({
-            "Returns Constrained": frontier_returns_c,
-            "Volatility Constrained": frontier_risks_c,
-            "Sharpe Ratio Constrained": frontier_sharpe_ratio_c,
+            "Returns": returns_c,
+            "Volatility": risks_c,
+            "Sharpe Ratio": sharpe_c,
         })
-    
-    weight_matrix={}
 
-    for idx in dataframe.index:
-        
-        weight_matrix[idx]=dataframe.loc[idx].to_numpy()
-    
-    metrics = {
-        'Returns': {},
-        'Volatility': {},
-        'Sharpe Ratio': {}
-    }
-    for key in weight_matrix:
-        
-        metrics['Returns'][key]=(np.round(portfolio.performance(weight_matrix[key]), 4))
-        metrics['Volatility'][key]=(np.round(portfolio.variance(weight_matrix[key]), 4))
-        metrics['Sharpe Ratio'][key]=np.round(metrics['Returns'][key]/metrics['Volatility'][key],4)
+    metrics = {'Returns': {}, 'Volatility': {}, 'Sharpe Ratio': {}}
+    for key in dataframe.index:
+        weights = dataframe.loc[key].to_numpy()
+        metrics['Returns'][key] = np.round(portfolio.performance(weights), 4)
+        metrics['Volatility'][key] = np.round(portfolio.variance(weights), 4)
+        metrics['Sharpe Ratio'][key] = np.round(metrics['Returns'][key] / metrics['Volatility'][key], 4)
 
-    
-    frontier = pd.DataFrame(
-        {
-            "Returns": frontier_returns,
-            "Volatility": frontier_risks,
-            "Sharpe Ratio": frontier_sharpe_ratio,
-        }
-    )
-    
+    indicators = pd.DataFrame(metrics, index=dataframe.index).T
+
+    return indicators, frontier, frontier_c
+
+
+def get_frontier(returns,dataframe,cons=None):
+    """frontier_data drawn as a Plotly chart: (indicators, figure)"""
+    indicators, frontier, frontier_c = frontier_data(returns, dataframe, cons)
+    if frontier_c is None and cons is not None:
+        frontier_c = frontier.copy()          # an empty constraint list: same frontier, still drawn
+    if frontier_c is not None:
+        frontier_c = frontier_c.rename(columns=lambda c: c + " Constrained")
+    metrics = {'Returns': indicators.loc['Returns'].to_dict(),
+               'Volatility': indicators.loc['Volatility'].to_dict(),
+               'Sharpe Ratio': indicators.loc['Sharpe Ratio'].to_dict()}
+    weight_matrix = {idx: None for idx in dataframe.index}
+
     # fig = px.scatter(
     #     frontier,
     #     y="Returns",
@@ -418,7 +471,7 @@ def get_frontier(returns,dataframe,cons=None):
         name='Efficient Frontier'
     )
 
-    if cons is not None:
+    if frontier_c is not None:
         fig.add_scatter(
             x=frontier_c['Volatility Constrained'],
             y=frontier_c['Returns Constrained'],
@@ -456,21 +509,22 @@ def get_frontier(returns,dataframe,cons=None):
             name=key,
             showlegend=False
         )
-    fig.add_scatter(
-        x=[metrics["Volatility"]['Optimal Portfolio']],
-        y=[metrics["Returns"]['Optimal Portfolio']],
-        mode="markers",
-        text=['Optimal Portfolio'],  # 👈 pass it here
-        customdata=[[metrics['Sharpe Ratio']['Optimal Portfolio']]],
-        hovertemplate=
-            "Volatility: %{x}<br>" +
-            "Returns: %{y}<br>" +
-            "Sharpe: %{customdata[0]:.2f}<br>" +
-            "Portfolio: %{text}<extra></extra>",
-        marker=dict(color="red", size=8, symbol="x"),
-        name=key,
-        showlegend=False
-    )
+    if 'Optimal Portfolio' in metrics['Volatility']:   # highlighted in red when the grid has it
+        fig.add_scatter(
+            x=[metrics["Volatility"]['Optimal Portfolio']],
+            y=[metrics["Returns"]['Optimal Portfolio']],
+            mode="markers",
+            text=['Optimal Portfolio'],  # 👈 pass it here
+            customdata=[[metrics['Sharpe Ratio']['Optimal Portfolio']]],
+            hovertemplate=
+                "Volatility: %{x}<br>" +
+                "Returns: %{y}<br>" +
+                "Sharpe: %{customdata[0]:.2f}<br>" +
+                "Portfolio: %{text}<extra></extra>",
+            marker=dict(color="red", size=8, symbol="x"),
+            name='Optimal Portfolio',
+            showlegend=False
+        )
 
     fig.update_layout(
         showlegend=False, 
@@ -486,7 +540,6 @@ def get_frontier(returns,dataframe,cons=None):
     
     fig.update_layout(showlegend=True)
     fig.update_layout(hoverlabel_namelength=-1)
-    indicators = pd.DataFrame(metrics,index=weight_matrix.keys()).T
 
     return indicators,fig
 

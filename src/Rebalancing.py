@@ -14,45 +14,45 @@ import numpy as np
 
 # In[2]:
 
+REBALANCING_RULES = {'Weekly': 'W-FRI', 'Monthly': 'ME', 'Quarterly': 'QE', 'Yearly': 'YE'}
+
+
 def get_rebalancing_dates(data,frequency='Quarterly'):
-    
-    if frequency=='Quarterly':
-        month=list(sorted(set(data.index + pd.offsets.BQuarterEnd(0))))
-    
-    elif frequency=='Monthly':
+    """First date + the last available date of each calendar period.
 
-        month=list(sorted(set(data.index + pd.offsets.BMonthEnd(0))))
+    The last date of the data is never a rebalancing date (nothing left to
+    hold), so a partial final period adds no rebalance -- the old 'nearest
+    business period end' mapping always added one on the second-to-last day
+    and could land on the first day of the next period when the period end
+    was a holiday. Works for 7-day (crypto) calendars too.
+    """
+    if frequency not in REBALANCING_RULES:
+        raise ValueError(f"Unknown rebalancing frequency {frequency!r} (expected one of {list(REBALANCING_RULES)})")
 
-    elif frequency=='Yearly':
-        month=list(sorted(set(data.index + pd.offsets.BYearEnd(0))))
-        
-    
-    month = pd.to_datetime(month)
+    index = pd.DatetimeIndex(sorted(data.index))
+    period_ends = pd.Series(index, index=index).groupby(pd.Grouper(freq=REBALANCING_RULES[frequency])).last().dropna()
 
-    idx1 = pd.Index(data.iloc[:-1].index)
-    idx2 = pd.Index(month)
-    
-    closest_dates = idx1[idx1.get_indexer(idx2, method='nearest')]
-    
-    dates_end=list(closest_dates)
-    dates_end.insert(0,data.index[0])
-    # dates_end.append(data.index[-1])
-    dates_end=sorted(list(set(dates_end)))
-    
-    rebalancing_dates=sorted(list(dates_end))
-    
-    return rebalancing_dates
+    dates_end = set(pd.DatetimeIndex(period_ends.values)) - {index[-1]}
+    dates_end.add(index[0])
+
+    return sorted(dates_end)
+
+
+def _weights_by_asset(data, weights):
+    """{asset: weight} -- a Series is matched by ticker (missing -> 0), an
+    array / list by position in data.columns."""
+    if isinstance(weights, pd.Series):
+        weights = weights.reindex(data.columns).fillna(0.0)
+    return dict(zip(data.columns, np.asarray(weights, dtype=float)))
+
 
 def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency='Quarterly'):
 
-    perf=data.pct_change()
+    dates=sorted(list(data.index))
 
-
-    dates=sorted(list(data.index))    
-    
     rebalancing_dates=get_rebalancing_dates(data,frequency=frequency)
-    
-    weights=dict(zip((data.columns),weights))
+
+    weights=_weights_by_asset(data, weights)
     
     
     shares={}
@@ -66,9 +66,9 @@ def rebalanced_portfolio_quantities(data,weights,investment_amount=100,frequency
     
     i=0
     for j in range(len(dates)-1):
-    
-    
-        if dates[j+1]>rebalancing_dates[i]:
+
+        # i < len: after the last rebalancing date the shares are just held
+        if i < len(rebalancing_dates) and dates[j+1]>rebalancing_dates[i]:
             
             shares={}
             
@@ -166,46 +166,54 @@ def rebalanced_book_cost(data,quantities,investment_amount=100):
     return cost
 
 def rebalanced_dynamic_quantities(data,matrix,investment_amount=100,transaction_fee=0.0):
-    
-    transaction_fee=0.0
-    investment_amount=100
-    weights=matrix.iloc[0].values
-    perf=data.pct_change()
-    
-    dates=sorted(list(data.index))    
-    
+    """Quantities held each day when the weights change at every date of
+    `matrix` (index = rebalancing dates, columns = assets, matched by name).
+
+    transaction_fee is a rate on the amount traded (0.001 = 10 bps): the
+    first purchase pays it on the whole investment, a rebalance only on the
+    turnover, sum |target value - current value|.
+    """
+    matrix=matrix.reindex(columns=data.columns).fillna(0.0)
+
+    dates=sorted(list(data.index))
+
     rebalancing_dates=matrix.index
-    
-    weights=dict(zip((data.columns),weights))
-    
+
+    weights=dict(zip(data.columns, matrix.iloc[0].values))
+
     shares={}
     portfolio={}
-    
+
     for key in weights:
-    
+
         shares[key]=weights[key]*investment_amount*(1-transaction_fee)/data.loc[dates[0]][key]
-    
+
     portfolio[dates[0]]=shares
-    
+
     i = 0
     for j in range(len(dates) - 1):
-    
+
         if i < len(rebalancing_dates) and dates[j + 1] > rebalancing_dates[i]:
-    
+
             updated_allocation = matrix.loc[rebalancing_dates[i]].values
             weights = dict(zip(data.columns, updated_allocation))
-    
+
             shares = {}
-    
+
             prices = data.loc[dates[j]]
             investment_amount = 0
-    
+
             for key in weights:
                 investment_amount += portfolio[dates[j]][key] * prices[key]
-    
+
+            # fee on the traded amount only (first-order: turnover measured at the pre-fee value)
+            traded = sum(abs(investment_amount * weights[key] - portfolio[dates[j]][key] * prices[key])
+                         for key in weights)
+            investment_amount -= transaction_fee * traded
+
             for key in weights:
-                shares[key] = investment_amount * weights[key] * (1 - transaction_fee) / prices[key]
-    
+                shares[key] = investment_amount * weights[key] / prices[key]
+
             i += 1
     
         else:

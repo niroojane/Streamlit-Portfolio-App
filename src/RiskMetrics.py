@@ -12,6 +12,8 @@ from scipy.stats import norm, chi2,gumbel_l
 import scipy.optimize as sco
 from scipy.optimize import minimize
 import datetime
+import warnings
+from scipy.special import xlogy
 from statsmodels.stats.correlation_tools import cov_nearest
 from joblib import Parallel, delayed
 
@@ -21,10 +23,8 @@ def compute_rolling_per_asset_betas(returns_window, benchmark_return_series, win
     """Rolling per-asset beta (slope of each asset's return vs. a benchmark
     return series), computed as rolling covariance / rolling variance.
 
-    This is mathematically identical to the per-window `lstsq` slope used
-    by `compute_per_asset_betas`, but vectorized across the whole history
-    in one pass instead of one `lstsq` call per asset per window -- the
-    difference matters a lot here since this runs on every window change.
+    Same definition as `compute_per_asset_betas` (cov(asset, bench) /
+    var(bench)), vectorized across the whole history in one pass.
     """
     common_index = returns_window.index.intersection(benchmark_return_series.index)
     returns_aligned = returns_window.loc[common_index]
@@ -41,19 +41,27 @@ def compute_per_asset_betas(returns_window, benchmark_return_series):
     output of `some_price_series.pct_change()`), not raw prices/levels.
     Returns a numpy array of length `returns_window.shape[1]`, one beta per
     asset column, in the same column order as `returns_window`.
+
+    beta_i = cov(asset_i, bench) / var(bench), i.e. the OLS slope of the
+    asset regressed on the benchmark, each asset over the dates where both
+    it and the benchmark have a return (a late-listed asset is not biased
+    towards 0 by zero-filled returns). 0 where it can't be estimated.
     """
-    X_raw = returns_window.fillna(0)
-    if X_raw.shape[1] == 0 or X_raw.shape[0] == 0:
-        return np.zeros(X_raw.shape[1])
+    if returns_window.shape[1] == 0 or returns_window.shape[0] < 2:
+        return np.zeros(returns_window.shape[1])
 
-    y = benchmark_return_series.reindex(X_raw.index).fillna(0)
-    ones = np.ones((X_raw.shape[0], 1))
-    beta = np.zeros(X_raw.shape[1])
-
-    for i in range(X_raw.shape[1]):
-        X_i = np.hstack([ones, X_raw.iloc[:, [i]].to_numpy()])
-        beta[i] = np.linalg.lstsq(X_i, y, rcond=None)[0][1]
-
+    if isinstance(benchmark_return_series, pd.DataFrame):
+        # e.g. Portfolio.portfolio(weights): a one-column frame of returns
+        benchmark_return_series = benchmark_return_series.iloc[:, 0]
+    y = pd.Series(benchmark_return_series).reindex(returns_window.index)
+    beta = np.zeros(returns_window.shape[1])
+    for i, (_, x) in enumerate(returns_window.items()):
+        both = x.notna() & y.notna()
+        if both.sum() < 2:
+            continue
+        var_y = y[both].var()
+        if var_y > 0:
+            beta[i] = x[both].cov(y[both]) / var_y
     return beta
 
 def performance_contribution(weighted_returns):
@@ -176,7 +184,7 @@ def get_var_contribution(func_name, args, returns, weights_series,
 
     results = Parallel(n_jobs=n_jobs, backend="loky")(
         delayed(process_window)(i)
-        for i in range(returns.shape[0] - window)
+        for i in range(returns.shape[0] - window + 1)   # +1: the last window ends on the latest date
     )
 
     dico_results_var = {date: var for date, var, _ in results}
@@ -188,24 +196,90 @@ def get_var_contribution(func_name, args, returns, weights_series,
     return var_dataframe, cvar_dataframe
 
 
+def _rolling_covariances(returns, window):
+    """Daily sample covariance of every rolling window (T - window + 1, N, N),
+    pairwise on the days both assets have a return, like DataFrame.cov.
+
+    Running sums instead of one estimate per window: the sum over a window is
+    the difference of two cumulative sums, so cov_ij = (Σ r_i r_j - Σ r_i Σ r_j / n) / (n - 1)
+    costs one subtraction whatever the window. The returns are centred first
+    (the covariance does not change) to keep the sums small.
+    """
+    values = returns.to_numpy(dtype=float)
+    present = ~np.isnan(values)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)   # mean of a column with no return
+        centred = np.where(present, values - np.nanmean(values, axis=0), 0.0)
+    count = present.astype(float)
+
+    # blocks of windows: the cumulative sums of one block hold (block + window) x N x N
+    # values, so memory stays bounded for long histories and large universes
+    windows = max(len(values) - window + 1, 0)
+    cov = np.empty((windows, values.shape[1], values.shape[1]))
+    block = 256
+    for first in range(0, windows, block):
+        last = min(first + block, windows)
+        rows = slice(first, last + window - 1)
+        cov[first:last] = _window_covariances(centred[rows], count[rows], window)
+    return cov
+
+
+def _window_covariances(centred, count, window):
+    """Pairwise covariance of every window of `window` rows (see _rolling_covariances)"""
+
+    def window_sums(a, b):
+        # Σ over each window of a_i * b_j, from the cumulative sums
+        cumulative = np.cumsum(np.einsum('ti,tj->tij', a, b), axis=0)
+        cumulative = np.concatenate([np.zeros((1,) + cumulative.shape[1:]), cumulative])
+        return cumulative[window:] - cumulative[:-window]
+
+    n = window_sums(count, count)              # days both assets have a return
+    sums = window_sums(centred, count)         # Σ r_i on those days
+    products = window_sums(centred, centred)   # Σ r_i r_j
+    with np.errstate(divide='ignore', invalid='ignore'):
+        cov = (products - sums * sums.transpose(0, 2, 1) / n) / (n - 1)
+    cov[n < 2] = np.nan
+    return cov
+
+
+def _rolling_risk(weights_series, returns, window):
+    """Ex-ante volatility and its per-asset decomposition on every date from the
+    window-th row of `returns`, with that date's weights (annualized, √252).
+
+    Same numbers as RiskAnalysis.variance / var_contrib on each window: only the
+    assets held that day count, and an asset not held has no contribution (NaN).
+    Returns (dates, columns, vol, vol contribution, idiosyncratic, correlation).
+    """
+    returns = returns.sort_index()
+    dates = returns.index[window - 1:]
+    weights = weights_series.loc[dates].fillna(0.0)
+    held_any = weights.columns[(weights != 0).any(axis=0)]   # the others never count
+    weights = weights[held_any].to_numpy(dtype=float)
+    held = weights != 0
+
+    if len(dates) == 0 or len(held_any) == 0:
+        empty = np.full((len(dates), len(held_any)), np.nan)
+        return dates, held_any, np.zeros(len(dates)), empty, empty, empty
+
+    cov = _rolling_covariances(returns[held_any], window) * 252
+    cov = np.where(held[:, :, None] & held[:, None, :], cov, 0.0)
+    cov_weights = np.einsum('tij,tj->ti', cov, weights)
+    vol = np.sqrt(np.einsum('ti,ti->t', weights, cov_weights))
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        contribution = weights * cov_weights / vol[:, None]
+        idiosyncratic = weights ** 2 * np.einsum('tii->ti', cov) / vol[:, None]
+    correlation = contribution - idiosyncratic
+    for frame in (contribution, idiosyncratic, correlation):
+        frame[~held] = np.nan
+    return dates, held_any, vol, contribution, idiosyncratic, correlation
+
+
 def get_ex_ante_vol(weights_series, returns, window=252, n_jobs=-1):
+    """Rolling ex-ante volatility, one column (0). `n_jobs` is kept for callers."""
+    dates, _, vol, *_ = _rolling_risk(weights_series, returns, window)
+    return pd.DataFrame({0: vol}, index=dates)
 
-    def process_window(i):
-        subset = returns.iloc[i:i+window]
-        weights = weights_series.loc[subset.index[-1]]
-        weights = weights[weights != 0]
-
-        portfolio_class = RiskAnalysis(subset.loc[:, weights.index])
-        return subset.index[-1], portfolio_class.variance(weights)
-
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(process_window)(i)
-        for i in range(returns.shape[0] - window)
-    )
-
-    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
-
-    return dataframe
     
 def get_ex_ante_vol_contribution_in_pct(weights_series, returns, window=252, n_jobs=-1):
 
@@ -218,7 +292,7 @@ def get_ex_ante_vol_contribution_in_pct(weights_series, returns, window=252, n_j
 
     results = Parallel(n_jobs=n_jobs, backend="loky")(
         delayed(process_window)(i)
-        for i in range(returns.shape[0] - window)
+        for i in range(returns.shape[0] - window + 1)   # +1: the last window ends on the latest date
     )
     
     dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
@@ -227,97 +301,52 @@ def get_ex_ante_vol_contribution_in_pct(weights_series, returns, window=252, n_j
     return dataframe    
 
     
+def get_ex_ante_vol_decomposition(weights_series, returns, window=252, n_jobs=-1):
+    """Volatility, correlation and idiosyncratic contributions of every rolling
+    window, in one pass.
+
+    The vol contributions add up to the portfolio volatility, so 'Total Vol'
+    is the ex-ante volatility of get_ex_ante_vol.
+    """
+    dates, columns, _, contribution, idiosyncratic, correlation = _rolling_risk(weights_series, returns, window)
+    decomposition = {}
+    for key, values, total in [('vol_contribution', contribution, 'Total Vol'),
+                               ('correlation_contribution', correlation, 'Total Correlation'),
+                               ('idiosyncratic_contribution', idiosyncratic, 'Total Idiosyncratic Vol')]:
+        dataframe = pd.DataFrame(values, index=dates, columns=columns)
+        dataframe[total] = dataframe.sum(axis=1)
+        decomposition[key] = dataframe
+    return decomposition
+
+
 def get_ex_ante_vol_contribution(weights_series, returns, window=252, n_jobs=-1):
+    return get_ex_ante_vol_decomposition(weights_series, returns, window)['vol_contribution']
 
-    def process_window(i):
-        subset=returns.iloc[i:i+window]
-        weights=weights_series.loc[subset.index[-1]]
-        weights=weights[weights != 0]
-        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        return subset.index[-1],portfolio_class.var_contrib(weights)[0]['Vol Contribution']
-
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(process_window)(i)
-        for i in range(returns.shape[0] - window)
-    )
-    
-    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
-    dataframe['Total Vol']=dataframe.sum(axis=1)
-    
-    return dataframe    
 
 def get_correlation_contribution(weights_series, returns, window=252, n_jobs=-1):
+    return get_ex_ante_vol_decomposition(weights_series, returns, window)['correlation_contribution']
 
-    def process_window(i):
-        subset=returns.iloc[i:i+window]
-        weights=weights_series.loc[subset.index[-1]]
-        weights=weights[weights != 0]
-        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        return subset.index[-1],portfolio_class.var_contrib(weights)[0]['Correlation']
 
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(process_window)(i)
-        for i in range(returns.shape[0] - window)
-    )
-    
-    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
-    dataframe['Total Correlation']=dataframe.sum(axis=1)
-    
-    return dataframe 
-    
 def get_idiosyncratic_contribution(weights_series, returns, window=252, n_jobs=-1):
+    return get_ex_ante_vol_decomposition(weights_series, returns, window)['idiosyncratic_contribution']
 
-    def process_window(i):
-        subset=returns.iloc[i:i+window]
-        weights=weights_series.loc[subset.index[-1]]
-        weights=weights[weights != 0]
-        portfolio_class=RiskAnalysis(subset.loc[:,weights.index])
-        return subset.index[-1],portfolio_class.var_contrib(weights)[0]['Idiosyncratic Risk']
-
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(process_window)(i)
-        for i in range(returns.shape[0] - window)
-    )
-    
-    dataframe = pd.DataFrame.from_dict(dict(results), orient='index').sort_index()
-    dataframe['Total Idiosyncratic Vol']=dataframe.sum(axis=1)
-    
-    return dataframe
-    
 
 def first_pca_over_time(returns, window=252, n_jobs=-1):
-
-    def process_window(i):
-        temp = returns.iloc[i:i+window]
-
-        # skip incomplete window
-        if temp.shape[0] < window:
-            return None
-
-        index = temp.index[-1]
-
-        cov_matrix = temp.cov()
-        eig_val, _ = np.linalg.eigh(cov_matrix)
-
-        # sort descending
-        eig_val = eig_val[::-1]
-
-        variance_explained = eig_val / eig_val.sum()
-
-        return index, variance_explained[0]
-
-    results = Parallel(n_jobs=n_jobs, backend="loky")(
-        delayed(process_window)(i)
-        for i in range(returns.shape[0])
-    )
-
-    # remove None results
-    results = [r for r in results if r is not None]
-
-    dico = dict(results)
-    dataframe = pd.DataFrame.from_dict(dico, orient='index').sort_index()
-
-    return dataframe
+    """Share of the variance explained by the first principal component of every
+    rolling window, one column (0). The covariances come from the running sums
+    of _rolling_covariances and every window's eigenvalues from one batched
+    call; a window whose covariance is undefined (an asset without returns) is
+    NaN. `n_jobs` is kept for callers."""
+    returns = returns.sort_index()
+    dates = returns.index[window - 1:]
+    explained = np.full(len(dates), np.nan)
+    if len(dates):
+        cov = _rolling_covariances(returns, window)
+        finite = np.isfinite(cov).all(axis=(1, 2))
+        if finite.any():
+            eigenvalues = np.linalg.eigvalsh(cov[finite])   # ascending
+            explained[finite] = eigenvalues[:, -1] / eigenvalues.sum(axis=1)
+    return pd.DataFrame({0: explained}, index=dates)
 
     
 def halton_sequences(number,base=2):
@@ -358,29 +387,24 @@ def generate_halton(iterations,dimensions=1,base=2):
     return matrix
 
 def is_pos_def(x):
-    return np.all(np.linalg.eigvals(x) > 0)
+    # eigvalsh on the symmetric part: real eigenvalues, no complex noise from eigvals
+    x = np.asarray(x, dtype=float)
+    return np.all(np.linalg.eigvalsh((x + x.T) / 2) > 0)
 
-def near_psd(x, epsilon=0):
-    
-    #Calculate the nearest positive semi definite matrix
 
-    if min(np.linalg.eigvals(x))> epsilon:
-        return x
-
-    n = x.shape[0]
-    var_list = np.array(np.sqrt(np.diag(x)))
-    y = np.array([[x[i, j]/(var_list[i]*var_list[j]) for i in range(n)] for j in range(n)])
-
-    eigval, eigvec = np.linalg.eig(y)
-    val = np.matrix(np.maximum(eigval, epsilon))
-    vec = np.matrix(eigvec)
-    T = 1/(np.multiply(vec, vec) * val.T)
-    T = np.matrix(np.sqrt(np.diag(np.array(T).reshape((n)) )))
-    B = T * vec * np.diag(np.array(np.sqrt(val)).reshape((n)))
-    near_corr = B*B.T    
-
-    near_cov = np.array([[near_corr[i, j]*(var_list[i]*var_list[j]) for i in range(n)] for j in range(n)])
-    return near_cov
+def _nearest_pd(x):
+    """cov_nearest returns a PSD matrix whose smallest eigenvalue can be ~0,
+    which np.linalg.cholesky rejects; nudge the diagonal until it factors."""
+    x = cov_nearest(np.asarray(x, dtype=float))
+    jitter = 1e-10 * max(np.mean(np.diag(x)), 1e-12)
+    for _ in range(10):
+        try:
+            np.linalg.cholesky(x)
+            return x
+        except np.linalg.LinAlgError:
+            x = x + np.eye(len(x)) * jitter
+            jitter *= 10
+    return x
 
 
 
@@ -395,6 +419,8 @@ def performance(perf,weights):
 def rolling_var(returns,weights,window=30,Q=1):
 
     #This function will return the rolling VaR on a x-days window following historical,parametric and multivariate model
+    # Each VaR is estimated on the window ENDING THE DAY BEFORE (.shift(1)) and compared
+    # with that day's return -- otherwise the tested return is inside its own estimate.
 
     value_at_risk=pd.DataFrame()
 
@@ -414,13 +440,13 @@ def rolling_var(returns,weights,window=30,Q=1):
             var[date]=np.percentile(multivariate_var,Q)
 
 
-    var=pd.DataFrame(var.values(),index=var.keys())
+    var=pd.Series(var)
 
-    portfolio=Portfolio(returns).portfolio(weights)
+    portfolio=Portfolio(returns).portfolio(weights)['Portfolio']
 
-    value_at_risk['Historical']=portfolio.rolling(window=window).apply(lambda x:np.percentile(x,Q))
-    value_at_risk['Parametric']=portfolio.rolling(window=window).std()*norm(loc =0 , scale = 1).ppf(Q/100)
-    value_at_risk['Multivariate']=var
+    value_at_risk['Historical']=portfolio.rolling(window=window).apply(lambda x:np.percentile(x,Q)).shift(1)
+    value_at_risk['Parametric']=(portfolio.rolling(window=window).std()*norm(loc =0 , scale = 1).ppf(Q/100)).shift(1)
+    value_at_risk['Multivariate']=var.reindex(portfolio.index).shift(1)
     value_at_risk['Portfolio']=portfolio
 
     return value_at_risk.dropna()
@@ -453,8 +479,10 @@ def kupiec_test(rolling_var,Q=5):
             proportion_violation=number_violation/number_obs
             proportion_non_violation=1-proportion_violation
 
-            kupiec=2*np.log((proportion_non_violation/(1-confidence))**(number_non_violation)*
-                                (proportion_violation/confidence)**number_violation)
+            # log-likelihood ratio in log form: the product of powers underflows to 0
+            # for long histories (log(0) = -inf); xlogy handles 0 violations (0*log 0 = 0)
+            kupiec=2*(xlogy(number_non_violation, proportion_non_violation) + xlogy(number_violation, proportion_violation)
+                      - number_non_violation*np.log(1-confidence) - number_violation*np.log(confidence))
 
             p_value=1-chi2.cdf(kupiec,1)
 
@@ -525,6 +553,119 @@ def vol_constraint(cov_matrix, sign, limit):
         constraints = [{'type': dico_map[sign], 'fun': lambda weights: vol(weights) - limit}]
 
     return constraints
+
+def tracking_error_constraint(cov_matrix, bench_weights, sign, limit):
+    """Annualized tracking-error constraint vs. a benchmark weight vector.
+
+    cov_matrix    : daily covariance of the universe (DataFrame or array)
+    bench_weights : benchmark weights over the SAME universe (Series is
+                    reindexed on cov_matrix's columns, missing assets -> 0)
+    limit         : annualized TE, in decimals (0.05 = 5%)
+
+    Works on TE² instead of TE (no sqrt -> no infinite gradient when the
+    weights hit the benchmark, no NaN on a slightly non-PSD covariance),
+    normalized by limit² so the constraint is well scaled for SLSQP, and
+    passes the analytic Jacobian.
+    """
+
+    if isinstance(bench_weights, pd.Series) and isinstance(cov_matrix, pd.DataFrame):
+        bench_weights = bench_weights.reindex(cov_matrix.columns).fillna(0.0)
+
+    cov = np.asarray(cov_matrix, dtype=float)
+    cov = (cov + cov.T) / 2 * 252
+    bench = np.asarray(bench_weights, dtype=float).ravel()
+
+    if bench.shape[0] != cov.shape[0]:
+        raise ValueError(f"bench_weights has {bench.shape[0]} assets, cov_matrix has {cov.shape[0]}")
+
+    limit = float(limit)
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
+
+    if limit < 0:
+        raise ValueError("Tracking error limit must be ≥ 0")
+
+    # TE ≥ 0 always holds. For TE ≤ 0 / TE = 0, an exact w = bench equality
+    # would clash with the budget constraint (more equalities than weights)
+    # and TE² = 0 has a zero gradient, so use a tiny tolerance instead.
+    if limit == 0:
+        if sign == '≥':
+            return []
+        limit = 1e-4
+
+    target = limit ** 2
+
+    def te_ratio(weights):
+        active = np.asarray(weights) - bench
+        return active @ cov @ active / target
+
+    def te_ratio_grad(weights):
+        active = np.asarray(weights) - bench
+        return 2 * cov @ active / target
+
+    if sign == '≤':
+        constraints = [{'type': dico_map[sign], 'fun': lambda weights: 1 - te_ratio(weights),
+                        'jac': lambda weights: -te_ratio_grad(weights)}]
+    else:
+        constraints = [{'type': dico_map[sign], 'fun': lambda weights: te_ratio(weights) - 1,
+                        'jac': te_ratio_grad}]
+
+    return constraints
+
+
+def information_ratio_constraint(returns, bench_weights, sign, limit, ann=252):
+    """Ex-ante information-ratio constraint vs. a benchmark weight vector.
+
+        IR(w) = active return / tracking error
+              = (w - b)·μ·ann / sqrt((w - b)ᵀ Σ (w - b) · ann)
+
+    returns       : daily returns of the universe (DataFrame) -- μ and Σ are
+                    estimated on it, consistent with optimize()
+    bench_weights : benchmark weights over the SAME universe (a Series is
+                    reindexed on returns' columns, missing assets -> 0)
+    limit         : annualized IR (0.5 = half a unit of TE per year)
+
+    Imposed without the division: IR ≥ L  <=>  active_return - L·TE ≥ 0.
+    That keeps it defined and smooth at w = b (TE = 0, where the ratio
+    itself is 0/0 -- holding the benchmark satisfies 'IR ≥ L' trivially:
+    no active risk taken, none required). TE is smoothed by a tiny ε so
+    its gradient stays finite at w = b. The analytic Jacobian is passed.
+    """
+    if isinstance(bench_weights, pd.Series):
+        bench_weights = bench_weights.reindex(returns.columns).fillna(0.0)
+    bench = np.asarray(bench_weights, dtype=float).ravel()
+    # same estimates as Portfolio.optimize: NaN returns count as 0
+    mu = returns.fillna(0).mean().to_numpy() * ann
+    cov = returns.cov().to_numpy() * ann
+    cov = (cov + cov.T) / 2
+
+    if bench.shape[0] != mu.shape[0]:
+        raise ValueError(f"bench_weights has {bench.shape[0]} assets, returns has {mu.shape[0]}")
+
+    limit = float(limit)
+    eps = 1e-12
+    dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
+
+    def te(weights):
+        active = np.asarray(weights) - bench
+        return np.sqrt(active @ cov @ active + eps)
+
+    def excess(weights):
+        # active return - limit * TE  (>= 0  <=>  IR >= limit)
+        return (np.asarray(weights) - bench) @ mu - limit * te(weights)
+
+    def excess_grad(weights):
+        active = np.asarray(weights) - bench
+        return mu - limit * (cov @ active) / te(weights)
+
+    if sign == '≤':
+        constraints = [{'type': dico_map[sign], 'fun': lambda weights: -excess(weights),
+                        'jac': lambda weights: -excess_grad(weights)}]
+    else:
+        constraints = [{'type': dico_map[sign], 'fun': excess, 'jac': excess_grad}]
+
+    return constraints
+
+
 def build_constraint(prices, constraint_matrix):
     constraints = []
     dico_map = {'=': 'eq', '≥': 'ineq', '≤': 'ineq'}
@@ -617,88 +758,135 @@ class Portfolio:
         variance=np.sqrt(np.dot(weights.T,np.dot(self.returns.cov(),weights)))*np.sqrt(252)
         return variance
     
-    def sharpe_ratio(weights):
+    def sharpe_ratio(self,weights):
             return self.performance(weights)/self.variance(weights)
 
-    def optimize(self,objective='minimum_variance',constraints=False):
-        
-            
+    def optimize(self,objective='minimum_variance',constraints=False,bench_weights=None):
+        """Long-only, fully-invested weights maximizing / minimizing `objective`:
+        minimum_variance, sharpe_ratio, risk_parity, maximum_diversification,
+        eigenportfolio, and -- relative to `bench_weights` (benchmark weights
+        over the same assets; a Series is matched by ticker, missing -> 0):
+          tracking_error     minimum ex-ante tracking error
+          information_ratio  maximum ex-ante information ratio
+        """
+
+        # Estimated once per optimization -- the objectives below are called
+        # hundreds of times by SLSQP. mu matches self.performance()
+        # (np.sum over assets treats a NaN return as 0).
+        cov = self.returns.cov().values * 252
+        mu = self.returns.fillna(0).mean().values * 252
+        asset_vol = np.sqrt(np.diag(cov))
+
         def sum_equal_one(weight):
-            return np.sum(weight) - 1   
-        
-        def sharpe_ratio(weights):
-            return - self.performance(weights)/self.variance(weights)
-        
+            return np.sum(weight) - 1
+
         def variance(weights):
-            cov = self.returns.cov().values * 252
             return weights @ cov @ weights
-        
+
         def volatility(weights):
             return np.sqrt(variance(weights))
-            
+
+        def sharpe_ratio(weights):
+            return - (weights @ mu) / volatility(weights)
+
         def risk_contrib(weights):
-            cov = self.returns.cov().values * 252
             port_vol = volatility(weights)
             return weights * (cov @ weights) / port_vol
-            
+
         def risk_parity(weights):
-            
+
             RC = risk_contrib(weights)
             total_risk= RC.sum()
             target = total_risk / len(weights)
-            
+
             return np.sum(((RC - target)/total_risk)**2)
 
         def diversification_ratio(weights):
-            cov = self.returns.cov().values * 252
-            asset_vol = np.sqrt(np.diag(cov))
             port_vol = np.sqrt(weights @ cov @ weights)
             dr = (weights @ asset_vol) / port_vol
             return -dr
-            
+
         def rayleigh_quotient(weights):
-            cov = self.returns.cov().values * 252
             R = np.dot(weights.T, np.dot(cov, weights)) / np.dot(weights.T, weights)
             return -R
-            
+
+        objectives = {
+            'minimum_variance': volatility,
+            'sharpe_ratio': sharpe_ratio,
+            'risk_parity': risk_parity,
+            'maximum_diversification': diversification_ratio,
+            'eigenportfolio': rayleigh_quotient,
+        }
+
         n_assets = len(self.returns.columns)
         weight = np.array([1 / n_assets] * n_assets)
-        
+
+        bench = None
+        if bench_weights is not None:
+            if isinstance(bench_weights, pd.Series):
+                bench_weights = bench_weights.reindex(self.returns.columns).fillna(0.0)
+            bench = np.asarray(bench_weights, dtype=float).ravel()
+            if bench.shape[0] != n_assets:
+                raise ValueError(f"bench_weights has {bench.shape[0]} assets, returns has {n_assets}")
+
+        def tracking_variance(weights):
+            # TE² (no sqrt: smooth at w = bench); scaled so SLSQP sees O(1) values
+            active = weights - bench
+            return active @ cov @ active * 100
+
+        def tracking_variance_grad(weights):
+            return 2 * cov @ (weights - bench) * 100
+
+        te_eps = 1e-8   # keeps the IR defined at w = bench (TE = 0)
+
+        def information_ratio(weights):
+            active = weights - bench
+            return - (active @ mu) / np.sqrt(active @ cov @ active + te_eps)
+
+        def information_ratio_grad(weights):
+            active = weights - bench
+            te = np.sqrt(active @ cov @ active + te_eps)
+            return - (mu / te - (active @ mu) * (cov @ active) / te ** 3)
+
+        objectives['tracking_error'] = tracking_variance
+        objectives['information_ratio'] = information_ratio
+        jacobians = {'tracking_error': tracking_variance_grad, 'information_ratio': information_ratio_grad}
+        if objective not in objectives:
+            raise ValueError(f"Objective function undefined: {objective!r} (expected one of {sorted(objectives)})")
+        if objective in jacobians and bench is None:
+            raise ValueError(f"optimize('{objective}') needs bench_weights (the benchmark's weights).")
+
+        if objective == 'information_ratio' and np.allclose(weight, bench, atol=1e-6):
+            # the IR is flat (0/0) at the benchmark: start a step towards the best-returning asset
+            tilt = np.zeros(n_assets); tilt[np.argmax(mu)] = 1.0
+            weight = 0.9 * bench + 0.1 * tilt
+
         bounds = tuple((0, 1) for _ in range(n_assets))
-        
+
         if not constraints:
-            
+
             constraints = [{'type': 'eq', 'fun': sum_equal_one}]
-        
+
         else:
-            
+
             constraints=[{'type': 'eq', 'fun': sum_equal_one}]+constraints
-        
-        if objective=='minimum_variance':
 
-            optimum_weights = sco.minimize(volatility, weight, method='SLSQP', bounds=bounds, constraints=constraints)
-        
-        elif objective=='sharpe_ratio':
-            
-            optimum_weights = sco.minimize(sharpe_ratio, weight, method='SLSQP', bounds=bounds, constraints=constraints)
+        optimum_weights = sco.minimize(objectives[objective], weight, method='SLSQP', bounds=bounds, constraints=constraints,
+                                       jac=jacobians.get(objective))
 
-        elif objective=='risk_parity':
-            
-            optimum_weights = sco.minimize(risk_parity, weight, method='SLSQP', bounds=bounds, constraints=constraints)
-        elif objective=='maximum_diversification':
-            
-            optimum_weights = sco.minimize(diversification_ratio, weight, method='SLSQP', bounds=bounds, constraints=constraints)
-            
-        elif objective=='eigenportfolio':
+        if not optimum_weights.success:
+            # SLSQP still returns its last iterate: usable, but the constraints may not hold.
+            # Constant text so Python shows it once per objective, not once per rolling window.
+            warnings.warn(f"optimize('{objective}') did not converge -- the weights may not satisfy "
+                          f"every constraint.", RuntimeWarning, stacklevel=2)
 
-            optimum_weights = sco.minimize(rayleigh_quotient, weight, method='SLSQP', bounds=bounds, constraints=constraints)
-            
-        else:
-            
-            print("Objective function undefined")
-            
-            
-        return optimum_weights.x
+        # Always return valid long-only, fully-invested weights: a failed SLSQP
+        # iterate can break the budget too (silent leverage / cash in a backtest).
+        # On success this only removes ~1e-12 rounding.
+        weights = np.clip(np.nan_to_num(optimum_weights.x), 0, None)
+        if weights.sum() <= 0:
+            return np.full(n_assets, 1 / n_assets)
+        return weights / weights.sum()
     
     def efficient_frontier(self,constraints=False,points=100):
 
@@ -775,7 +963,8 @@ class Portfolio:
         implied_returns=risk_aversion*self.returns.cov().dot(weights).squeeze()
         omega=np.diag(np.diag(P.dot(tau*self.returns.cov()).dot(P.T)))
         sigma_scaled=self.returns.cov()*tau
-        BL_returns= implied_returns + sigma_scaled.dot(P.T).dot(np.linalg.inv(P.dot(sigma_scaled).dot(P.T))+omega).dot(Q-P.dot(implied_returns))
+        # Π + τΣPᵀ (PτΣPᵀ + Ω)⁻¹ (Q − PΠ)  -- Ω belongs inside the inverse
+        BL_returns= implied_returns + sigma_scaled.dot(P.T).dot(np.linalg.inv(P.dot(sigma_scaled).dot(P.T)+omega)).dot(Q-P.dot(implied_returns))
         inv_cov=np.linalg.inv(self.returns.cov())
         BL_weights=inv_cov.dot(BL_returns)
         BL_weights=BL_weights/BL_weights.sum()
@@ -817,146 +1006,96 @@ class RiskAnalysis(Portfolio):
         
         #Return parametric VaR, where assets follows a Normal Distribution
         
-        intervals=np.arange(Q, 1, 0.0005, dtype=float)
-        
+        # Expected shortfall of a normal, closed form: σ·φ(z)/(1-Q) (the old grid
+        # average of quantiles stopped at 0.9995 and missed the far tail)
         variance=super().variance(weights)*stress_factor
-        VaR=variance/np.sqrt(252)*norm(loc =0 , scale = 1).ppf(1-Q)
-        CVaR=variance/np.sqrt(252)*norm(loc =0 , scale = 1).ppf(1-intervals).mean()
-        
-        return VaR,CVaR
-        
-    def multivariate_distribution(self, iterations=10000, stress_factor=1.0,mean_shock=1.0):
-        
-        num_asset = len(self.returns.columns)
-        cov = self.returns.cov()
-        
-        if np.isscalar(stress_factor):
-            # Case 1: scalar stress
-            stress_vec = np.full(num_asset, stress_factor)
-            stress_matrix = np.diag(stress_vec)
-            stressed_cov = stress_matrix @ cov @ stress_matrix
-        
-        elif isinstance(stress_factor, np.ndarray) and np.issubdtype(stress_factor.dtype, np.floating):
-            # Case 2: numpy matrix
-            stress_matrix = stress_factor  # assume already NxN
-            stress_vec = np.diag(stress_factor)  # optional if needed
-            stressed_cov = stress_matrix @ cov @ stress_matrix
-        
-        else:
-            # Case 3: list / vector
-            stress_vec = np.asarray(stress_factor, dtype=float)
-            stress_matrix = np.diag(stress_vec)
-            stressed_cov = stress_matrix @ cov @ stress_matrix
+        daily_vol=variance/np.sqrt(252)
+        VaR=daily_vol*norm.ppf(1-Q)
+        CVaR=-daily_vol*norm.pdf(norm.ppf(1-Q))/(1-Q)
 
-        # Stressed covariance
-        
-        # Ensure positive definite
-        if not is_pos_def(stressed_cov):
-            stressed_cov = cov_nearest(stressed_cov)
-        
+        return VaR,CVaR
+
+    def stressed_moments(self, stress_factor=1.0):
+        """(stressed daily std, stressed correlation) used by every simulation.
+
+        stress_factor:
+          scalar          -> every volatility × stress_factor
+          vector / list   -> volatility of asset i × stress_factor[i]
+          N×N matrix      -> the stress grid of the apps: the DIAGONAL holds the
+                             volatility multipliers, the OFF-DIAGONAL the
+                             correlation shocks added to the historical
+                             correlation (then clipped to [-1, 1] and made
+                             positive definite)
+        """
+        std = self.returns.std()
+        corr = self.returns.corr().to_numpy()
+        stress = np.asarray(stress_factor, dtype=float)
+
+        if stress.ndim == 0:
+            stressed_std = std * float(stress)
+        elif stress.ndim == 1:
+            stressed_std = std * stress
+        elif stress.ndim == 2:
+            stressed_std = std * np.diag(stress)
+            shock = np.tril(stress, -1)          # below the diagonal only
+            corr = corr + shock + shock.T
+        else:
+            raise ValueError("Invalid stress_factor shape")
+
+        corr = np.clip(corr, -1, 1)
+        np.fill_diagonal(corr, 1.0)
+        if not is_pos_def(corr):
+            corr = _nearest_pd(corr)
+        return stressed_std, corr
+
+    def multivariate_distribution(self, iterations=10000, stress_factor=1.0,mean_shock=1.0):
+
+        stressed_std, corr = self.stressed_moments(stress_factor)
+        std = stressed_std.to_numpy()
+        stressed_cov = corr * np.outer(std, std)
+
         # Multivariate simulation
         mean = self.returns.mean()*mean_shock
         multivariate = np.random.multivariate_normal(mean, stressed_cov, iterations)
-        
+
         return multivariate
-        
+
     def gaussian_copula(self,iterations=10000,stress_factor=1.0,mean_shock=1.0):
         randoms=np.random.normal(size=(iterations,self.returns.shape[1])).T
 
-        cov = self.returns.cov()
-        corr_matrix = self.returns.corr()
-        std = self.returns.std()
-        
-        num_assets = self.returns.shape[1]
-        
-        if np.isscalar(stress_factor):
-        
-            # scalar volatility stress
-            stressed_std = std * stress_factor
-            stressed_corr = corr_matrix
-        
-        elif isinstance(stress_factor, np.ndarray):
-        
-            stress_factor = np.asarray(stress_factor)
-        
-            if stress_factor.ndim == 1:
-                # vector volatility stress
-                stressed_std = std * stress_factor
-                stressed_corr = corr_matrix
-        
-            elif stress_factor.ndim == 2:
-                # correlation stress matrix
-                stressed_std = std
-                stressed_corr = corr_matrix + np.tril(stress_factor)+np.tril(stress_factor).T
-        
-        else:
-            raise ValueError("Invalid stress_factor type")
-            
-        corr_matrix=np.clip(stressed_corr,-1,1)
-        
-        if not is_pos_def(corr_matrix):
-            corr_matrix=cov_nearest(corr_matrix)
-            
-            
+        stressed_std, corr_matrix = self.stressed_moments(stress_factor)
+
         cholesky=np.linalg.cholesky(corr_matrix)
         simulation=np.matmul(cholesky,randoms).T
         simulation=pd.DataFrame(simulation)
         simulation.columns=self.returns.columns
 
         copula_sample=simulation*stressed_std+self.returns.mean()*mean_shock
-        
-        return copula_sample
-    
-    def t_copula(self,iterations=10000,stress_factor=1.0,mean_shock=1.0):
-        
 
-        df=self.returns.shape[1]*self.returns.shape[1]//2+self.returns.shape[1]
+        return copula_sample
+
+    def t_copula(self,iterations=10000,stress_factor=1.0,mean_shock=1.0,df=5):
+        """Multivariate Student-t with `df` degrees of freedom (fat tails; the
+        old df = n²/2 + n made it practically Gaussian). Rescaled by
+        sqrt((df-2)/df) so each asset keeps its (stressed) volatility --
+        only the tails get fatter."""
+
+        if df <= 2:
+            raise ValueError("df must be > 2 (the variance of a Student-t is infinite otherwise)")
         ChiSquared = np.random.chisquare(df=df, size=iterations)
 
         randoms=np.random.normal(size=(iterations,self.returns.shape[1])).T
-        
-        cov = self.returns.cov()
-        corr_matrix = self.returns.corr()
-        std = self.returns.std()
-        
-        num_assets = self.returns.shape[1]
-        
-        if np.isscalar(stress_factor):
-        
-            # scalar volatility stress
-            stressed_std = std * stress_factor
-            stressed_corr = corr_matrix
-        
-        elif isinstance(stress_factor, np.ndarray):
-        
-            stress_factor = np.asarray(stress_factor)
-        
-            if stress_factor.ndim == 1:
-                # vector volatility stress
-                stressed_std = std * stress_factor
-                stressed_corr = corr_matrix
-        
-            elif stress_factor.ndim == 2:
-                # correlation stress matrix
-                stressed_std = std
-                stressed_corr = corr_matrix + np.tril(stress_factor)+np.tril(stress_factor).T
-        
-        else:
-            raise ValueError("Invalid stress_factor type")
-        
-        corr_matrix=np.clip(stressed_corr,-1,1)
 
-        if not is_pos_def(corr_matrix):
-            corr_matrix=cov_nearest(corr_matrix)
-                
+        stressed_std, corr_matrix = self.stressed_moments(stress_factor)
+
         cholesky=np.linalg.cholesky(corr_matrix)
-            
-        simulation=np.matmul(cholesky,randoms)/np.sqrt(ChiSquared/df)
+
+        simulation=np.matmul(cholesky,randoms)/np.sqrt(ChiSquared/df)*np.sqrt((df-2)/df)
         simulation=pd.DataFrame(simulation.T)
         simulation.columns=self.returns.columns
 
         copula_sample=simulation*stressed_std+self.returns.mean()*mean_shock
-        
+
         return copula_sample
     
     # def gumbel_copula(self,iterations=10000,theta=2,stress_vec=1.0,mean_return_shock=1.0):
@@ -1002,54 +1141,20 @@ class RiskAnalysis(Portfolio):
         )
     
         return scaled_returns
-    def monte_carlo(self,spot,horizon=20/250,iterations=10000,stress_factor=1.0,mean_return_shock=1.0):
-        
-  
-        num_asset = len(self.returns.columns)
-        
-        randoms = np.random.normal(size=(iterations, num_asset)).T
-        
-        cov = self.returns.cov()
-        
-        if isinstance(stress_factor, np.ndarray):
-        
-            stress_factor = np.asarray(stress_factor)
-        
-            if stress_factor.ndim == 1:
-                stress_matrix = np.diag(stress_factor)
-        
-            elif stress_factor.ndim == 2:
-                stress_matrix = np.eye(num_asset)
-        
-            else:
-                raise ValueError("Invalid stress_factor shape")
-        
-        elif np.isscalar(stress_factor):
-        
-            stress_vec = np.full(num_asset, stress_factor)
-            stress_matrix = np.diag(stress_vec)
-        
-        else:
-        
-            stress_vec = np.asarray(stress_factor, dtype=float)
-            stress_matrix = np.diag(stress_vec)
-        
-        stressed_cov = stress_matrix @ cov @ stress_matrix
-        
-        stressed_std = np.sqrt(np.diag(stressed_cov))
-        corr_matrix = stressed_cov / np.outer(stressed_std, stressed_std)
-        
-        if isinstance(stress_factor, np.ndarray) and stress_factor.ndim == 2:
-            corr_matrix = corr_matrix + np.tril(stress_factor) + np.tril(stress_factor).T
+    def monte_carlo(self,spot,horizon=20/252,iterations=10000,stress_factor=1.0,mean_return_shock=1.0):
 
-        vol = np.sqrt(np.diag(stressed_cov))*np.sqrt(250)  # standard deviations
-        shocked_means=self.returns.mean()*250*mean_return_shock
-        
-        corr_matrix=np.clip(corr_matrix,-1,1)
-        
-        if not is_pos_def(corr_matrix):
-            corr_matrix = cov_nearest(corr_matrix)
-        
+
+        num_asset = len(self.returns.columns)
+
+        randoms = np.random.normal(size=(iterations, num_asset)).T
+
+        # same stress conventions as the other simulations (a 2-D grid's
+        # diagonal now stresses the volatilities here too)
+        stressed_std, corr_matrix = self.stressed_moments(stress_factor)
+
+        vol = stressed_std.to_numpy()*np.sqrt(252)  # annualized standard deviations
+        shocked_means=self.returns.mean()*252*mean_return_shock
+
         cholesky=np.linalg.cholesky(corr_matrix)
         
         drift = np.exp((shocked_means - 0.5 * vol**2) * horizon)        
