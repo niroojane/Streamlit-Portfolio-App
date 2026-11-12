@@ -1129,6 +1129,8 @@ class RiskAnalysis(Portfolio):
         E = np.random.exponential(size=(iterations, n_assets))
     
         U = np.exp(-(E / S[:, None]) ** alpha)
+        # exp() underflows to 0 for extreme draws and norm.ppf(0) = -inf: keep U strictly inside (0, 1)
+        U = np.clip(U, 1e-12, 1 - 1e-12)
     
         # Step 3: convert uniforms into stressed returns
         means = self.returns.mean() * mean_return_shock
